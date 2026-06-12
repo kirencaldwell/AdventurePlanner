@@ -5,17 +5,12 @@ description: "A dynamic, multi-person adventure packing matrix"
 arch:
   - aarch64
   - amd64
-  - armhf
-  - armv7
-  - i386
-startup: application
 panel_icon: mdi:backpack
 panel_title: "Packing List"
 ingress: true
-ingress_port: 8099
-port: 8099
+ports: 8099
 map:
-  - config:rw
+  - homeassistant_config: rwc
 options:
   log_level: info
 schema:
