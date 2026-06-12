@@ -1,0 +1,17 @@
+
+name: Validate Add-on
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Hassfest Validation
+        uses: home-assistant/actions/hassfest@master
