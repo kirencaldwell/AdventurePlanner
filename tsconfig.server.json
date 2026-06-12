@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist-server",
+    "module": "ESNext",
+    "target": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "noEmit": false,
+    "ignoreDeprecations": "5.0"
+  },
+  "include": ["server.ts", "src/types.ts"]
+}
