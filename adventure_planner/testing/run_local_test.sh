@@ -31,7 +31,7 @@ fi
 
 # 3. Build the Docker image
 echo "🔨 Building Docker image: $IMAGE_NAME..."
-docker build -t "$IMAGE_NAME" .
+docker build -t "$IMAGE_NAME" ./adventure_planner
 
 # 4. Run the container
 echo "🏃 Launching the container..."
