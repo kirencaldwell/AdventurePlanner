@@ -151,6 +151,8 @@ function App() {
     }));
   };
 
+  const [newItemDrafts, setNewItemDrafts] = useState<Record<string, string>>({});
+
   const deleteItem = (categoryId: string, itemId: string) => {
     updateCurrentTrip(trip => ({
       ...trip,
@@ -1016,50 +1018,59 @@ function App() {
                     >
                       <div className="day-number">Day {index + 1}</div>
                       <div className="day-inputs">
-                        <input
-                          type="text"
-                          className="day-location-input"
-                          placeholder="Enter coordinates, e.g. 40.1234, -105.1234"
-                          value={day.location}
-                          onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              (e.target as HTMLInputElement).blur();
-                            }
-                          }}
-                        />
-                        <input
-                          type="text"
-                          className="day-metric-input"
-                          placeholder="Mileage"
-                          value={day.mileage || ''}
-                          onChange={(e) => {
-                            updateCurrentTrip(trip => {
-                              const days = [...(trip.days || [])];
-                              days[index] = {
-                                ...days[index],
-                                mileage: e.target.value
-                              };
-                              return { ...trip, days, lastModified: Date.now() };
-                            });
-                          }}
-                        />
-                        <input
-                          type="text"
-                          className="day-metric-input"
-                          placeholder="Elevation gain"
-                          value={day.elevationGain || ''}
-                          onChange={(e) => {
-                            updateCurrentTrip(trip => {
-                              const days = [...(trip.days || [])];
-                              days[index] = {
-                                ...days[index],
-                                elevationGain: e.target.value
-                              };
-                              return { ...trip, days, lastModified: Date.now() };
-                            });
-                          }}
-                        />
+                        <label className="day-field">
+                          <span className="day-field-label">Coordinates</span>
+                          <input
+                            type="text"
+                            className="day-location-input"
+                            placeholder="Enter coordinates, e.g. 40.1234, -105.1234"
+                            value={day.location}
+                            onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                          />
+                        </label>
+                        <label className="day-field">
+                          <span className="day-field-label">Mileage</span>
+                          <input
+                            type="text"
+                            className="day-metric-input"
+                            placeholder="Mileage"
+                            value={day.mileage || ''}
+                            onChange={(e) => {
+                              updateCurrentTrip(trip => {
+                                const days = [...(trip.days || [])];
+                                days[index] = {
+                                  ...days[index],
+                                  mileage: e.target.value
+                                };
+                                return { ...trip, days, lastModified: Date.now() };
+                              });
+                            }}
+                          />
+                        </label>
+                        <label className="day-field">
+                          <span className="day-field-label">Elevation Gain</span>
+                          <input
+                            type="text"
+                            className="day-metric-input"
+                            placeholder="Elevation gain"
+                            value={day.elevationGain || ''}
+                            onChange={(e) => {
+                              updateCurrentTrip(trip => {
+                                const days = [...(trip.days || [])];
+                                days[index] = {
+                                  ...days[index],
+                                  elevationGain: e.target.value
+                                };
+                                return { ...trip, days, lastModified: Date.now() };
+                              });
+                            }}
+                          />
+                        </label>
                       </div>
                       <button className="delete-tab-btn" onClick={() => deleteTripDay(day.id)} title="Remove Day">×</button>
                     </div>
@@ -1087,13 +1098,36 @@ function App() {
                 <input 
                   type="text" 
                   placeholder="Add item..." 
+                  value={newItemDrafts[activeCategory.id] || ''}
+                  onChange={(e) => {
+                    setNewItemDrafts(prev => ({
+                      ...prev,
+                      [activeCategory.id]: e.target.value,
+                    }));
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       addItem(activeCategory.id, (e.target as HTMLInputElement).value);
-                      (e.target as HTMLInputElement).value = '';
+                      setNewItemDrafts(prev => ({
+                        ...prev,
+                        [activeCategory.id]: '',
+                      }));
                     }
                   }}
                 />
+                <button
+                  className="add-item-btn"
+                  onClick={() => {
+                    const name = newItemDrafts[activeCategory.id] || '';
+                    addItem(activeCategory.id, name);
+                    setNewItemDrafts(prev => ({
+                      ...prev,
+                      [activeCategory.id]: '',
+                    }));
+                  }}
+                >
+                  Add
+                </button>
               </div>
             </div>
 
