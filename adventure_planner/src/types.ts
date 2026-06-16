@@ -1,4 +1,4 @@
-export type StatusId = 'fully-packed' | 'set-aside' | 'not-packed' | 'not-bringing' | 'in-car' | string;
+export type StatusId = 'fully-packed' | 'set-aside' | 'not-packed' | 'not-bringing' | 'in-car' | 'needs-charging' | 'need-to-buy' | string;
 
 export interface Status {
   id: StatusId;
@@ -23,10 +23,22 @@ export interface Category {
   items: Item[];
 }
 
+export interface TripDay {
+  id: string;
+  location: string;
+  notes?: string;
+  weatherLinks?: string;
+  mileage?: string;
+  elevationGain?: string;
+}
+
 export interface Trip {
   id: string;
   name: string;
   people: Person[];
   categories: Category[];
+  startDate?: string;
+  days?: TripDay[];
+  caltopoUrl?: string;
   lastModified: number;
 }
