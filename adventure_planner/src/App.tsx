@@ -3,7 +3,7 @@ import './App.css';
 import type { Trip, StatusId } from './types';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 
-const API_URL = 'api/trips';
+const API_URL = `${import.meta.env.VITE_API_URL || '/api/trips'}`;
 
 const generateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
