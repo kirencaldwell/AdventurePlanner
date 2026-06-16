@@ -40,5 +40,6 @@ export interface Trip {
   startDate?: string;
   days?: TripDay[];
   caltopoUrl?: string;
+  debriefDiscussions?: string[];
   lastModified: number;
 }

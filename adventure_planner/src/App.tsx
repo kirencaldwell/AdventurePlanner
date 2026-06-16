@@ -98,6 +98,7 @@ function App() {
       startDate: '',
       days: [],
       caltopoUrl: '',
+      debriefDiscussions: [],
       lastModified: Date.now(),
     };
     setTrips(prev => [...prev, newTrip]);
@@ -531,6 +532,26 @@ function App() {
     setActiveTab(newId);
   };
 
+  const addDiscussion = () => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      debriefDiscussions: [...(trip.debriefDiscussions || []), ''],
+      lastModified: Date.now(),
+    }));
+  };
+
+  const updateDiscussion = (index: number, value: string) => {
+    updateCurrentTrip(trip => {
+      const discussions = [...(trip.debriefDiscussions || [])];
+      discussions[index] = value;
+      return {
+        ...trip,
+        debriefDiscussions: discussions,
+        lastModified: Date.now(),
+      };
+    });
+  };
+
   const deleteCategory = (id: string) => {
     if (!confirm('Are you sure you want to delete this tab and all its items?')) return;
     updateCurrentTrip(trip => ({
@@ -675,6 +696,12 @@ function App() {
         >
           Not Packed
         </button>
+        <button 
+          className={activeTab === 'debrief' ? 'active' : ''} 
+          onClick={() => setActiveTab('debrief')}
+        >
+          Debrief
+        </button>
         {currentTrip.categories.map(cat => (
           <button 
             key={cat.id} 
@@ -729,6 +756,27 @@ function App() {
                 </table>
               </div>
             )}
+          </div>
+        ) : activeTab === 'debrief' ? (
+          <div className="debrief-panel">
+            <div className="debrief-header">
+              <div>
+                <h2>Debrief</h2>
+                <p>Capture notes and discussion points from the trip.</p>
+              </div>
+              <button onClick={addDiscussion}>+ Add Discussion</button>
+            </div>
+            <div className="discussion-list">
+              {(currentTrip.debriefDiscussions || []).map((discussion, index) => (
+                <textarea
+                  key={`${currentTrip.id}-discussion-${index}`}
+                  className="discussion-textarea"
+                  placeholder={`Discussion ${index + 1}`}
+                  value={discussion}
+                  onChange={(e) => updateDiscussion(index, e.target.value)}
+                />
+              ))}
+            </div>
           </div>
         ) : activeTab === 'weather' ? (
           <div className="weather-panel">
