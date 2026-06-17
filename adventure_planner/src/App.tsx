@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import './App.css';
 import type { Trip, StatusId } from './types';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
-
 import { supabase } from './supabaseClient';
+import { AuthScreen } from './AuthScreen';
+import { ShareModal } from './ShareModal';
+import type { User } from '@supabase/supabase-js';
 
 const generateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -34,6 +36,8 @@ const ALTITUDES = [0, 3000, 6000, 10000] as const;
 const LAPSE_RATE_C_PER_M = 6.5 / 1000;
 
 function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [currentTripId, setCurrentTripId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('trip');
@@ -47,8 +51,33 @@ function App() {
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
 
-  // Load trips from Supabase
+  // Handle Auth Session
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (!session) {
+        setIsInitialLoad(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session) {
+        setIsInitialLoad(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load trips from Supabase when user is logged in
+  useEffect(() => {
+    if (!user) {
+      setTrips([]);
+      setCurrentTripId(null);
+      return;
+    }
+
     const loadTrips = async () => {
       try {
         const { data, error } = await supabase
@@ -68,12 +97,14 @@ function App() {
             days: row.days || [],
             caltopoUrl: row.caltopo_url || '',
             debriefDiscussions: row.debrief_discussions || [],
+            userId: row.user_id,
+            sharedWith: row.shared_with || [],
             lastModified: Number(row.last_modified || Date.now())
           }));
           setTrips(mappedTrips);
           setCurrentTripId(mappedTrips[0].id);
         } else {
-          createNewTrip('My First Adventure');
+          createNewTrip('My First Adventure', user);
         }
         setIsInitialLoad(false);
       } catch (err: any) {
@@ -83,11 +114,11 @@ function App() {
     };
 
     loadTrips();
-  }, []);
+  }, [user]);
 
   // Save trips to Supabase (debounced)
   useEffect(() => {
-    if (isInitialLoad || trips.length === 0) return;
+    if (!user || isInitialLoad || trips.length === 0) return;
 
     const timeoutId = setTimeout(async () => {
       const upsertData = trips.map(t => ({
@@ -99,6 +130,8 @@ function App() {
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
         debrief_discussions: t.debriefDiscussions || [],
+        user_id: t.userId || user.id,
+        shared_with: t.sharedWith || [],
         last_modified: t.lastModified
       }));
 
@@ -109,9 +142,10 @@ function App() {
     }, 1000); // 1 second debounce
 
     return () => clearTimeout(timeoutId);
-  }, [trips, isInitialLoad]);
+  }, [trips, isInitialLoad, user]);
 
-  const createNewTrip = (name: string) => {
+  const createNewTrip = (name: string, currentUser = user) => {
+    if (!currentUser) return;
     const newTrip: Trip = {
       id: generateId(),
       name,
@@ -125,6 +159,8 @@ function App() {
       days: [],
       caltopoUrl: '',
       debriefDiscussions: [],
+      userId: currentUser.id,
+      sharedWith: [],
       lastModified: Date.now(),
     };
     setTrips(prev => [...prev, newTrip]);
@@ -611,6 +647,10 @@ function App() {
     );
   }
 
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   if (!currentTrip) {
     return (
       <div className="loading-screen">
@@ -645,6 +685,10 @@ function App() {
   return (
     <div className="app-container">
       <header className="trip-header">
+        <div className="user-profile-bar">
+          <span className="user-email">Logged in as: <strong>{user.email}</strong></span>
+          <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
+        </div>
         <div className="trip-info">
           <div className="trip-title-wrapper">
             <h1 
@@ -658,6 +702,7 @@ function App() {
             <span className="edit-hint">✎</span>
           </div>
           <div className="trip-actions">
+            <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
             <button onClick={handlePrintAllTabs}>Download All Tabs</button>
             <button onClick={copyTrip}>Copy Trip</button>
             <button onClick={resetTrip}>Reset Items</button>
@@ -1323,6 +1368,21 @@ function App() {
           </div>
         ))}
       </section>
+
+      {isShareModalOpen && (
+        <ShareModal
+          tripId={currentTrip.id}
+          sharedWithIds={currentTrip.sharedWith || []}
+          onClose={() => setIsShareModalOpen(false)}
+          onUpdateSharedWith={(newSharedWithIds) => {
+            updateCurrentTrip(trip => ({
+              ...trip,
+              sharedWith: newSharedWithIds,
+              lastModified: Date.now()
+            }));
+          }}
+        />
+      )}
     </div>
   );
 }
