@@ -68,6 +68,70 @@
   gap: 10px;
 }
 
+.invite-link-section {
+  margin-bottom: 24px;
+}
+
+.invite-link-section h3 {
+  font-size: 14px;
+  color: #8b949e;
+  margin: 0 0 8px 0;
+  font-weight: 500;
+}
+
+.invite-link-section p {
+  font-size: 13px;
+  color: #8b949e;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+.copy-link-btn {
+  width: 100%;
+  padding: 12px;
+  background: #21262d;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+  border-radius: 8px;
+  color: #c9d1d9;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.copy-link-btn:hover {
+  background: #30363d;
+  border-color: #8b949e;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 24px;
+  color: #30363d;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(240, 246, 252, 0.1);
+}
+
+.divider span {
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #484f58;
+}
+
+.share-form h3 {
+  font-size: 14px;
+  color: #8b949e;
+  margin: 0 0 12px 0;
+  font-weight: 500;
+}
+
 .share-form input {
   flex: 1;
   padding: 10px 14px;
