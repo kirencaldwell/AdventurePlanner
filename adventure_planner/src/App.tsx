@@ -5,7 +5,6 @@ import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
 import { ShareModal } from './ShareModal';
-import type { User } from '@supabase/supabase-js';
 
 const generateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -36,8 +35,7 @@ const ALTITUDES = [0, 3000, 6000, 10000] as const;
 const LAPSE_RATE_C_PER_M = 6.5 / 1000;
 
 function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [username, setUsername] = useState<string | null>(localStorage.getItem('adventure_username'));
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [currentTripId, setCurrentTripId] = useState<string | null>(null);
@@ -52,47 +50,48 @@ function App() {
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
 
-  // Handle Auth Session
+  const handleLogin = (name: string) => {
+    localStorage.setItem('adventure_username', name);
+    setUsername(name);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adventure_username');
+    setUsername(null);
+    setTrips([]);
+    setCurrentTripId(null);
+  };
+
+  // Set initial load state
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        setIsInitialLoad(false);
-      }
-    });
+    if (!username) {
+      setIsInitialLoad(false);
+    }
+  }, [username]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      
-      if (event === 'PASSWORD_RECOVERY') {
-        setShowResetPassword(true);
-        setIsInitialLoad(false);
-      }
-
-      if (!session && event !== 'PASSWORD_RECOVERY') {
-        setIsInitialLoad(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Load trips from Supabase when user is logged in
+  // Load trips from Supabase when username is set
   useEffect(() => {
-    if (!user) {
+    if (!username) {
       setTrips([]);
       setCurrentTripId(null);
       return;
     }
 
     const loadTrips = async () => {
+      console.log('Attempting to load trips for username:', username);
       try {
         const { data, error } = await supabase
           .from('trips')
           .select('*')
+          .or(`user_id.eq.${username},shared_with.cs.{"${username}"}`)
           .order('last_modified', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase query error:', error);
+          throw error;
+        }
+
+        console.log('Trips data received:', data);
 
         if (Array.isArray(data) && data.length > 0) {
           const mappedTrips: Trip[] = data.map(row => ({
@@ -109,9 +108,14 @@ function App() {
             lastModified: Number(row.last_modified || Date.now())
           }));
           setTrips(mappedTrips);
-          setCurrentTripId(mappedTrips[0].id);
+          
+          // Only change currentTripId if not already set or if it's the first load
+          if (!currentTripId) {
+            setCurrentTripId(mappedTrips[0].id);
+          }
         } else {
-          createNewTrip('My First Adventure', user);
+          console.log('No trips found, creating a new one...');
+          createNewTrip('My First Adventure', username);
         }
         setIsInitialLoad(false);
       } catch (err: any) {
@@ -121,11 +125,49 @@ function App() {
     };
 
     loadTrips();
-  }, [user]);
+  }, [username]);
+
+  // Handle Join Trip from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const joinTripId = params.get('join');
+    
+    if (joinTripId && username) {
+      const handleJoin = async () => {
+        try {
+          const { data: trip, error } = await supabase
+            .from('trips')
+            .select('shared_with, user_id')
+            .eq('id', joinTripId)
+            .single();
+
+          if (error || !trip) return;
+
+          if (trip.user_id !== username && !(trip.shared_with || []).includes(username)) {
+            const updatedSharedWith = [...(trip.shared_with || []), username];
+            await supabase
+              .from('trips')
+              .update({ shared_with: updatedSharedWith })
+              .eq('id', joinTripId);
+            
+            // Reload trips after joining
+            window.location.href = window.location.origin;
+          } else {
+            // Already have access, just clear the param
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setCurrentTripId(joinTripId);
+          }
+        } catch (err) {
+          console.error('Error joining trip:', err);
+        }
+      };
+      handleJoin();
+    }
+  }, [username]);
 
   // Save trips to Supabase (debounced)
   useEffect(() => {
-    if (!user || isInitialLoad || trips.length === 0) return;
+    if (!username || isInitialLoad || trips.length === 0) return;
 
     const timeoutId = setTimeout(async () => {
       const upsertData = trips.map(t => ({
@@ -137,22 +179,26 @@ function App() {
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
         debrief_discussions: t.debriefDiscussions || [],
-        user_id: t.userId || user.id,
+        user_id: username,
         shared_with: t.sharedWith || [],
         last_modified: t.lastModified
       }));
 
+      console.log('Upserting trips to Supabase:', upsertData);
       const { error } = await supabase.from('trips').upsert(upsertData);
       if (error) {
         console.error('Failed to save trips to Supabase:', error);
+      } else {
+        console.log('Trips saved successfully');
       }
     }, 1000); // 1 second debounce
 
     return () => clearTimeout(timeoutId);
-  }, [trips, isInitialLoad, user]);
+  }, [trips, isInitialLoad, username]);
 
-  const createNewTrip = (name: string, currentUser = user) => {
-    if (!currentUser) return;
+  const createNewTrip = (name: string, currentUsername = username) => {
+    console.log('createNewTrip called with name:', name, 'username:', currentUsername);
+    if (!currentUsername) return;
     const newTrip: Trip = {
       id: generateId(),
       name,
@@ -166,7 +212,7 @@ function App() {
       days: [],
       caltopoUrl: '',
       debriefDiscussions: [],
-      userId: currentUser.id,
+      userId: currentUsername,
       sharedWith: [],
       lastModified: Date.now(),
     };
@@ -654,14 +700,8 @@ function App() {
     );
   }
 
-  if (!user || showResetPassword) {
-    return (
-      <AuthScreen 
-        key={showResetPassword ? 'reset' : 'auth'}
-        initialMode={showResetPassword ? 'reset' : 'login'} 
-        onPasswordResetComplete={() => setShowResetPassword(false)}
-      />
-    );
+  if (!username) {
+    return <AuthScreen onLogin={handleLogin} />;
   }
 
   if (!currentTrip) {
@@ -699,10 +739,11 @@ function App() {
     <div className="app-container">
       <header className="trip-header">
         <div className="user-profile-bar">
-          <span className="user-email">Logged in as: <strong>{user.email}</strong></span>
-          <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
+          <span className="user-email">Logged in as: <strong>{username}</strong></span>
+          <button onClick={handleLogout} className="logout-btn">Log Out</button>
         </div>
         <div className="trip-info">
+...
           <div className="trip-title-wrapper">
             <h1 
               contentEditable 
@@ -1382,14 +1423,15 @@ function App() {
         ))}
       </section>
 
-      {isShareModalOpen && (
+      {isShareModalOpen && currentTrip && (
         <ShareModal
-          sharedWithIds={currentTrip.sharedWith || []}
+          tripId={currentTrip.id}
+          sharedWith={currentTrip.sharedWith || []}
           onClose={() => setIsShareModalOpen(false)}
-          onUpdateSharedWith={(newSharedWithIds) => {
+          onUpdateSharedWith={(newSharedWith) => {
             updateCurrentTrip(trip => ({
               ...trip,
-              sharedWith: newSharedWithIds,
+              sharedWith: newSharedWith,
               lastModified: Date.now()
             }));
           }}
