@@ -3,7 +3,7 @@ import './App.css';
 import type { Trip, StatusId } from './types';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 
-const API_URL = `${import.meta.env.VITE_API_URL || '/api/trips'}`;
+import { supabase } from './supabaseClient';
 
 const generateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -47,39 +47,65 @@ function App() {
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
 
-  // Load trips from server
+  // Load trips from Supabase
   useEffect(() => {
-    fetch(API_URL)
-      .then(res => {
-        if (!res.ok) throw new Error(`Server returned ${res.status}: ${res.statusText}`);
-        return res.json();
-      })
-      .then(data => {
+    const loadTrips = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('trips')
+          .select('*')
+          .order('last_modified', { ascending: false });
+
+        if (error) throw error;
+
         if (Array.isArray(data) && data.length > 0) {
-          setTrips(data);
-          setCurrentTripId(data[0].id);
+          const mappedTrips: Trip[] = data.map(row => ({
+            id: row.id,
+            name: row.name,
+            people: row.people || [],
+            categories: row.categories || [],
+            startDate: row.start_date || '',
+            days: row.days || [],
+            caltopoUrl: row.caltopo_url || '',
+            debriefDiscussions: row.debrief_discussions || [],
+            lastModified: Number(row.last_modified || Date.now())
+          }));
+          setTrips(mappedTrips);
+          setCurrentTripId(mappedTrips[0].id);
         } else {
           createNewTrip('My First Adventure');
         }
         setIsInitialLoad(false);
-      })
-      .catch(err => {
-        console.error('Failed to load trips from server:', err);
-        setLoadError(`${err.message} (URL: ${API_URL})`);
-        // We DON'T set isInitialLoad(false) here yet so the error shows
-      });
+      } catch (err: any) {
+        console.error('Failed to load trips from Supabase:', err);
+        setLoadError(err.message || 'Unknown database error');
+      }
+    };
+
+    loadTrips();
   }, []);
 
-  // Save trips to server (debounced)
+  // Save trips to Supabase (debounced)
   useEffect(() => {
     if (isInitialLoad || trips.length === 0) return;
 
-    const timeoutId = setTimeout(() => {
-      fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trips),
-      }).catch(err => console.error('Failed to save trips:', err));
+    const timeoutId = setTimeout(async () => {
+      const upsertData = trips.map(t => ({
+        id: t.id,
+        name: t.name,
+        people: t.people,
+        categories: t.categories,
+        start_date: t.startDate || '',
+        days: t.days || [],
+        caltopo_url: t.caltopoUrl || '',
+        debrief_discussions: t.debriefDiscussions || [],
+        last_modified: t.lastModified
+      }));
+
+      const { error } = await supabase.from('trips').upsert(upsertData);
+      if (error) {
+        console.error('Failed to save trips to Supabase:', error);
+      }
     }, 1000); // 1 second debounce
 
     return () => clearTimeout(timeoutId);
@@ -500,21 +526,26 @@ function App() {
     setCurrentTripId(newTrip.id);
   };
 
-  const deleteTrip = () => {
+  const deleteTrip = async () => {
     if (!currentTrip) return;
     if (!confirm(`Are you sure you want to permanently delete the trip "${currentTrip.name}"?`)) return;
 
     const remainingTrips = trips.filter(t => t.id !== currentTripId);
+    
+    // Delete from Supabase first
+    const { error } = await supabase.from('trips').delete().eq('id', currentTripId);
+    if (error) {
+      console.error('Failed to delete trip from Supabase:', error);
+      alert('Failed to delete trip from server.');
+      return;
+    }
+
     setTrips(remainingTrips);
 
     if (remainingTrips.length > 0) {
       setCurrentTripId(remainingTrips[0].id);
     } else {
       createNewTrip('My New Adventure');
-    }
-
-    if (remainingTrips.length === 0) {
-      // Server will handle the empty state on next reload via createNewTrip logic
     }
   };
 
