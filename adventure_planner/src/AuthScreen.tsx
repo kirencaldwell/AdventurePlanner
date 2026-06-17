@@ -39,8 +39,8 @@ export function AuthScreen({ initialMode = 'login', onPasswordResetComplete }: A
         });
         if (error) throw error;
       } else if (mode === 'forgot') {
-        // Generate reset link pointing back to the current origin
-        const resetRedirect = `${window.location.origin}`;
+        // Generate reset link pointing back to the current origin or a configured URL
+        const resetRedirect = import.meta.env.VITE_AUTH_REDIRECT_URL || window.location.origin;
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: resetRedirect,
         });
