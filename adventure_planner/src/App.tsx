@@ -1371,7 +1371,6 @@ function App() {
 
       {isShareModalOpen && (
         <ShareModal
-          tripId={currentTrip.id}
           sharedWithIds={currentTrip.sharedWith || []}
           onClose={() => setIsShareModalOpen(false)}
           onUpdateSharedWith={(newSharedWithIds) => {

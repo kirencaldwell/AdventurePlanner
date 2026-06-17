@@ -3,13 +3,12 @@ import { supabase } from './supabaseClient';
 import './ShareModal.css';
 
 interface ShareModalProps {
-  tripId: string;
   sharedWithIds: string[];
   onClose: () => void;
   onUpdateSharedWith: (newSharedWithIds: string[]) => void;
 }
 
-export function ShareModal({ tripId, sharedWithIds, onClose, onUpdateSharedWith }: ShareModalProps) {
+export function ShareModal({ sharedWithIds, onClose, onUpdateSharedWith }: ShareModalProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
