@@ -202,7 +202,7 @@ function App() {
     const newTrip: Trip = {
       id: generateId(),
       name,
-      people: [{ id: generateId(), name: 'Me' }],
+      people: [],
       categories: INITIAL_CATEGORIES.map(cat => ({
         id: generateId(),
         name: cat,
