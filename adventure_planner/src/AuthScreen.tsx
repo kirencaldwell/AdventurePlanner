@@ -2,8 +2,15 @@ import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
 import './AuthScreen.css';
 
-export function AuthScreen() {
-  const [isSignUp, setIsSignUp] = useState(false);
+type AuthMode = 'login' | 'signup' | 'forgot' | 'reset';
+
+interface AuthScreenProps {
+  initialMode?: AuthMode;
+  onPasswordResetComplete?: () => void;
+}
+
+export function AuthScreen({ initialMode = 'login', onPasswordResetComplete }: AuthScreenProps) {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -17,20 +24,38 @@ export function AuthScreen() {
     setLoading(true);
 
     try {
-      if (isSignUp) {
+      if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({
           email,
           password,
         });
         if (error) throw error;
-        setMessage('Registration successful! You can now log in.');
-        setIsSignUp(false);
-      } else {
+        setMessage('Registration successful! Check your email to confirm your account.');
+        setMode('login');
+      } else if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
+      } else if (mode === 'forgot') {
+        // Generate reset link pointing back to the current origin
+        const resetRedirect = `${window.location.origin}`;
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: resetRedirect,
+        });
+        if (error) throw error;
+        setMessage('Password reset email sent! Check your inbox for the recovery link.');
+      } else if (mode === 'reset') {
+        const { error } = await supabase.auth.updateUser({
+          password,
+        });
+        if (error) throw error;
+        setMessage('Your password has been successfully updated! You can now log in.');
+        if (onPasswordResetComplete) {
+          onPasswordResetComplete();
+        }
+        setMode('login');
       }
     } catch (err: any) {
       console.error('Auth action failed:', err);
@@ -51,59 +76,120 @@ export function AuthScreen() {
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
-          <h2>{isSignUp ? 'Create Account' : 'Welcome Back'}</h2>
+          <h2>
+            {mode === 'login' && 'Welcome Back'}
+            {mode === 'signup' && 'Create Account'}
+            {mode === 'forgot' && 'Reset Password'}
+            {mode === 'reset' && 'Enter New Password'}
+          </h2>
           
           {error && <div className="auth-alert error">{error}</div>}
           {message && <div className="auth-alert success">{message}</div>}
 
-          <div className="input-group">
-            <label htmlFor="email">Email Address</label>
-            <input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
+          {mode !== 'reset' && (
+            <div className="input-group">
+              <label htmlFor="email">Email Address</label>
+              <input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={mode === 'forgot' && loading}
+              />
+            </div>
+          )}
 
-          <div className="input-group">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-            />
-          </div>
+          {mode !== 'forgot' && (
+            <div className="input-group">
+              <label htmlFor="password">
+                {mode === 'reset' ? 'New Password' : 'Password'}
+              </label>
+              <input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
+          )}
+
+          {mode === 'login' && (
+            <div className="forgot-password-link-container">
+              <button 
+                type="button" 
+                onClick={() => {
+                  setMode('forgot');
+                  setError(null);
+                  setMessage(null);
+                }} 
+                className="auth-link-btn"
+              >
+                Forgot Password?
+              </button>
+            </div>
+          )}
 
           <button type="submit" disabled={loading} className="auth-submit-btn">
             {loading ? (
               <span className="spinner-small"></span>
-            ) : isSignUp ? (
-              'Sign Up'
             ) : (
-              'Log In'
+              <>
+                {mode === 'login' && 'Log In'}
+                {mode === 'signup' && 'Sign Up'}
+                {mode === 'forgot' && 'Send Reset Link'}
+                {mode === 'reset' && 'Update Password'}
+              </>
             )}
           </button>
         </form>
 
         <div className="auth-footer">
-          <button 
-            type="button" 
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setError(null);
-              setMessage(null);
-            }} 
-            className="auth-toggle-btn"
-          >
-            {isSignUp ? 'Already have an account? Log In' : "Don't have an account? Sign Up"}
-          </button>
+          {mode === 'login' && (
+            <button 
+              type="button" 
+              onClick={() => {
+                setMode('signup');
+                setError(null);
+                setMessage(null);
+              }} 
+              className="auth-toggle-btn"
+            >
+              Don't have an account? Sign Up
+            </button>
+          )}
+
+          {mode === 'signup' && (
+            <button 
+              type="button" 
+              onClick={() => {
+                setMode('login');
+                setError(null);
+                setMessage(null);
+              }} 
+              className="auth-toggle-btn"
+            >
+              Already have an account? Log In
+            </button>
+          )}
+
+          {(mode === 'forgot' || mode === 'reset') && (
+            <button 
+              type="button" 
+              onClick={() => {
+                setMode('login');
+                setError(null);
+                setMessage(null);
+              }} 
+              className="auth-toggle-btn"
+            >
+              Back to Log In
+            </button>
+          )}
         </div>
       </div>
     </div>
