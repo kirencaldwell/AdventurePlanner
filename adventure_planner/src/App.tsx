@@ -37,6 +37,7 @@ const LAPSE_RATE_C_PER_M = 6.5 / 1000;
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [currentTripId, setCurrentTripId] = useState<string | null>(null);
@@ -60,9 +61,15 @@ function App() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
-      if (!session) {
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowResetPassword(true);
+        setIsInitialLoad(false);
+      }
+
+      if (!session && event !== 'PASSWORD_RECOVERY') {
         setIsInitialLoad(false);
       }
     });
@@ -647,8 +654,14 @@ function App() {
     );
   }
 
-  if (!user) {
-    return <AuthScreen />;
+  if (!user || showResetPassword) {
+    return (
+      <AuthScreen 
+        key={showResetPassword ? 'reset' : 'auth'}
+        initialMode={showResetPassword ? 'reset' : 'login'} 
+        onPasswordResetComplete={() => setShowResetPassword(false)}
+      />
+    );
   }
 
   if (!currentTrip) {

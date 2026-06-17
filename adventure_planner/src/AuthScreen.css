@@ -180,6 +180,28 @@
   text-decoration: underline;
 }
 
+.forgot-password-link-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -10px;
+  margin-bottom: 20px;
+}
+
+.auth-link-btn {
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.auth-link-btn:hover {
+  color: #58a6ff;
+  text-decoration: underline;
+}
+
 .spinner-small {
   width: 20px;
   height: 20px;
