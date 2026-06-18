@@ -42,11 +42,19 @@ body {
   gap: 10px;
 }
 
+.trip-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
 .trip-title-wrapper h1 {
   outline: none;
   padding: 4px 8px;
   border-radius: 4px;
   transition: background 0.2s;
+  margin: 0;
 }
 
 .trip-title-wrapper h1:hover, .trip-title-wrapper h1:focus {
@@ -57,6 +65,38 @@ body {
   font-size: 1rem;
   opacity: 0.5;
   cursor: default;
+}
+
+.trip-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding-left: 8px;
+}
+
+.trip-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: var(--border-radius);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.trip-stat-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.72;
+  text-transform: uppercase;
+}
+
+.trip-stat strong {
+  font-size: 0.95rem;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .add-tab-btn {
@@ -396,8 +436,21 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .day-inputs {
+  .day-inputs,
+  .objective-fields {
     grid-template-columns: 1fr;
+  }
+
+  .objective-row {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-number {
+    padding-top: 0;
+  }
+
+  .day-row .delete-objective-btn {
+    margin-top: 0;
   }
 
   .trip-input-row input {
@@ -428,6 +481,11 @@ select {
     padding: 0.95rem 0.9rem;
   }
 
+  .day-objectives-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .trip-input-row,
   .trip-days {
     padding: 1rem;
@@ -445,6 +503,15 @@ select {
 
   .trip-title-wrapper {
     align-items: flex-start;
+  }
+
+  .trip-stats {
+    padding-left: 0;
+    width: 100%;
+  }
+
+  .trip-stat {
+    flex: 1 1 140px;
   }
 
   .trip-actions {
@@ -677,6 +744,13 @@ select {
   align-items: start;
 }
 
+.day-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
 .day-field {
   display: flex;
   flex-direction: column;
@@ -703,7 +777,8 @@ select {
   min-height: 48px;
 }
 
-.day-row input:focus {
+.day-row input:focus,
+.day-row textarea:focus {
   border-color: var(--accent-color);
   outline: none;
   box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.12);
@@ -722,6 +797,102 @@ select {
   font-size: 1.2rem;
   padding: 0;
   flex-shrink: 0;
+}
+
+.day-objectives {
+  border-top: 1px solid #eef2f2;
+  padding-top: 1rem;
+}
+
+.day-objectives-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.day-objectives-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.day-row .add-objective-btn {
+  width: auto;
+  height: auto;
+  border-radius: var(--border-radius);
+  background: var(--accent-color);
+  color: white;
+  font-size: 0.9rem;
+  padding: 0.65rem 0.9rem;
+  white-space: nowrap;
+}
+
+.empty-objectives {
+  margin: 0;
+  color: #7f8c8d;
+  font-size: 0.95rem;
+}
+
+.objective-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.objective-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.85rem;
+  border-radius: var(--border-radius);
+  background: #f8fbfa;
+  border: 1px solid #e6eeee;
+}
+
+.objective-number {
+  font-weight: 700;
+  color: #34495e;
+  padding-top: 0.65rem;
+  white-space: nowrap;
+}
+
+.objective-fields {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 0.8fr 1fr;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.objective-description-field {
+  grid-row: span 2;
+}
+
+.day-description-field {
+  grid-column: 1 / -1;
+}
+
+.day-description-input,
+.objective-description-input {
+  width: 100%;
+  min-height: 104px;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #dfe6e9;
+  color: #111827;
+  background: #fff;
+  box-sizing: border-box;
+  font: inherit;
+  resize: vertical;
+}
+
+.day-row .delete-objective-btn {
+  width: 36px;
+  height: 36px;
+  font-size: 1rem;
+  margin-top: 1.55rem;
 }
 
 .weather-placeholder h2 {
@@ -992,4 +1163,3 @@ select {
 .share-btn-accent:hover {
   background: #2ea043;
 }
-

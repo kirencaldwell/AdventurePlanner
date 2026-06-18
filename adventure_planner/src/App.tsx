@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import type { Trip, StatusId } from './types';
+import type { Trip, StatusId, TripObjective } from './types';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
@@ -52,6 +52,24 @@ interface WeatherRow {
 
 const ALTITUDES = [0, 3000, 6000, 10000] as const;
 const LAPSE_RATE_C_PER_M = 6.5 / 1000;
+
+const parseTripNumber = (value: string | undefined) => {
+  if (!value) return 0;
+  const match = value.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  if (!match) return 0;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatTripStatNumber = (value: number) => {
+  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+};
+
+const formatTripRange = (min: number, max: number, unit: string) => {
+  const formattedMin = formatTripStatNumber(min);
+  const formattedMax = formatTripStatNumber(max);
+  return min === max ? `${formattedMin} ${unit}` : `${formattedMin}-${formattedMax} ${unit}`;
+};
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -363,6 +381,68 @@ function App() {
     updateCurrentTrip(trip => ({
       ...trip,
       days: (trip.days || []).filter(day => day.id !== dayId),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const addTripDayObjective = (dayId: string) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      days: (trip.days || []).map(day =>
+        day.id === dayId
+          ? {
+              ...day,
+              objectives: [
+                ...(day.objectives || []),
+                {
+                  id: generateId(),
+                  coordinates: '',
+                  mileage: '',
+                  elevationGain: '',
+                  description: '',
+                },
+              ],
+            }
+          : day
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const updateTripDayObjective = (
+    dayId: string,
+    objectiveId: string,
+    updates: Partial<Omit<TripObjective, 'id'>>
+  ) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      days: (trip.days || []).map(day =>
+        day.id === dayId
+          ? {
+              ...day,
+              objectives: (day.objectives || []).map(objective =>
+                objective.id === objectiveId
+                  ? { ...objective, ...updates }
+                  : objective
+              ),
+            }
+          : day
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const deleteTripDayObjective = (dayId: string, objectiveId: string) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      days: (trip.days || []).map(day =>
+        day.id === dayId
+          ? {
+              ...day,
+              objectives: (day.objectives || []).filter(objective => objective.id !== objectiveId),
+            }
+          : day
+      ),
       lastModified: Date.now(),
     }));
   };
@@ -737,6 +817,21 @@ function App() {
   }
 
   const tripDays = currentTrip.days || [];
+  const baseMileage = tripDays.reduce((sum, day) => sum + parseTripNumber(day.mileage), 0);
+  const objectiveMileage = tripDays.reduce(
+    (sum, day) => sum + (day.objectives || []).reduce((objectiveSum, objective) => objectiveSum + parseTripNumber(objective.mileage), 0),
+    0
+  );
+  const baseElevationGain = tripDays.reduce((sum, day) => sum + parseTripNumber(day.elevationGain), 0);
+  const objectiveElevationGain = tripDays.reduce(
+    (sum, day) => sum + (day.objectives || []).reduce((objectiveSum, objective) => objectiveSum + parseTripNumber(objective.elevationGain), 0),
+    0
+  );
+  const tripStats = {
+    dayCount: tripDays.length,
+    mileageRange: formatTripRange(baseMileage, baseMileage + objectiveMileage, 'mi'),
+    elevationRange: formatTripRange(baseElevationGain, baseElevationGain + objectiveElevationGain, 'ft'),
+  };
   const activeCategory = currentTrip.categories.find(c => c.id === activeTab);
 
   const handlePrintAllTabs = () => {
@@ -767,17 +862,32 @@ function App() {
           <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
         </div>
         <div className="trip-info">
-...
-          <div className="trip-title-wrapper">
-            <h1 
-              contentEditable 
-              suppressContentEditableWarning
-              onBlur={(e) => updateTripName(e.currentTarget.textContent || currentTrip.name)}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-            >
-              {currentTrip.name}
-            </h1>
-            <span className="edit-hint">✎</span>
+          <div className="trip-title-block">
+            <div className="trip-title-wrapper">
+              <h1 
+                contentEditable 
+                suppressContentEditableWarning
+                onBlur={(e) => updateTripName(e.currentTarget.textContent || currentTrip.name)}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              >
+                {currentTrip.name}
+              </h1>
+              <span className="edit-hint">✎</span>
+            </div>
+            <div className="trip-stats" aria-label="Trip stats">
+              <div className="trip-stat">
+                <span className="trip-stat-label">Days</span>
+                <strong>{tripStats.dayCount}</strong>
+              </div>
+              <div className="trip-stat">
+                <span className="trip-stat-label">Miles</span>
+                <strong>{tripStats.mileageRange}</strong>
+              </div>
+              <div className="trip-stat">
+                <span className="trip-stat-label">Elevation</span>
+                <strong>{tripStats.elevationRange}</strong>
+              </div>
+            </div>
           </div>
           <div className="trip-actions">
             <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
@@ -1180,60 +1290,150 @@ function App() {
                       }}
                     >
                       <div className="day-number">Day {index + 1}</div>
-                      <div className="day-inputs">
-                        <label className="day-field">
-                          <span className="day-field-label">Coordinates</span>
-                          <input
-                            type="text"
-                            className="day-location-input"
-                            placeholder="Enter coordinates, e.g. 40.1234, -105.1234"
-                            value={day.location}
-                            onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                (e.target as HTMLInputElement).blur();
-                              }
-                            }}
-                          />
-                        </label>
-                        <label className="day-field">
-                          <span className="day-field-label">Mileage</span>
-                          <input
-                            type="text"
-                            className="day-metric-input"
-                            placeholder="Mileage"
-                            value={day.mileage || ''}
-                            onChange={(e) => {
-                              updateCurrentTrip(trip => {
-                                const days = [...(trip.days || [])];
-                                days[index] = {
-                                  ...days[index],
-                                  mileage: e.target.value
-                                };
-                                return { ...trip, days, lastModified: Date.now() };
-                              });
-                            }}
-                          />
-                        </label>
-                        <label className="day-field">
-                          <span className="day-field-label">Elevation Gain</span>
-                          <input
-                            type="text"
-                            className="day-metric-input"
-                            placeholder="Elevation gain"
-                            value={day.elevationGain || ''}
-                            onChange={(e) => {
-                              updateCurrentTrip(trip => {
-                                const days = [...(trip.days || [])];
-                                days[index] = {
-                                  ...days[index],
-                                  elevationGain: e.target.value
-                                };
-                                return { ...trip, days, lastModified: Date.now() };
-                              });
-                            }}
-                          />
-                        </label>
+                      <div className="day-content">
+                        <div className="day-inputs">
+                          <label className="day-field">
+                            <span className="day-field-label">Coordinates</span>
+                            <input
+                              type="text"
+                              className="day-location-input"
+                              placeholder="Enter coordinates, e.g. 40.1234, -105.1234"
+                              value={day.location}
+                              onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  (e.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
+                          <label className="day-field">
+                            <span className="day-field-label">Mileage</span>
+                            <input
+                              type="text"
+                              className="day-metric-input"
+                              placeholder="Mileage"
+                              value={day.mileage || ''}
+                              onChange={(e) => {
+                                updateCurrentTrip(trip => {
+                                  const days = [...(trip.days || [])];
+                                  days[index] = {
+                                    ...days[index],
+                                    mileage: e.target.value
+                                  };
+                                  return { ...trip, days, lastModified: Date.now() };
+                                });
+                              }}
+                            />
+                          </label>
+                          <label className="day-field">
+                            <span className="day-field-label">Elevation Gain</span>
+                            <input
+                              type="text"
+                              className="day-metric-input"
+                              placeholder="Elevation gain"
+                              value={day.elevationGain || ''}
+                              onChange={(e) => {
+                                updateCurrentTrip(trip => {
+                                  const days = [...(trip.days || [])];
+                                  days[index] = {
+                                    ...days[index],
+                                    elevationGain: e.target.value
+                                  };
+                                  return { ...trip, days, lastModified: Date.now() };
+                                });
+                              }}
+                            />
+                          </label>
+                          <label className="day-field day-description-field">
+                            <span className="day-field-label">Description</span>
+                            <textarea
+                              className="day-description-input"
+                              placeholder="Describe the plan for this day..."
+                              value={day.description || ''}
+                              onChange={(e) => {
+                                updateCurrentTrip(trip => {
+                                  const days = [...(trip.days || [])];
+                                  days[index] = {
+                                    ...days[index],
+                                    description: e.target.value
+                                  };
+                                  return { ...trip, days, lastModified: Date.now() };
+                                });
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="day-objectives">
+                          <div className="day-objectives-header">
+                            <h3>Sub Objectives</h3>
+                            <button
+                              type="button"
+                              className="add-objective-btn"
+                              onClick={() => addTripDayObjective(day.id)}
+                            >
+                              + Add Objective
+                            </button>
+                          </div>
+                          {(day.objectives || []).length === 0 ? (
+                            <p className="empty-objectives">No sub objectives yet.</p>
+                          ) : (
+                            <div className="objective-list">
+                              {(day.objectives || []).map((objective, objectiveIndex) => (
+                                <div key={objective.id} className="objective-row">
+                                  <div className="objective-number">Objective {objectiveIndex + 1}</div>
+                                  <div className="objective-fields">
+                                    <label className="day-field objective-description-field">
+                                      <span className="day-field-label">Description</span>
+                                      <textarea
+                                        className="objective-description-input"
+                                        placeholder="Describe this objective..."
+                                        value={objective.description}
+                                        onChange={(e) => updateTripDayObjective(day.id, objective.id, { description: e.target.value })}
+                                      />
+                                    </label>
+                                    <label className="day-field">
+                                      <span className="day-field-label">Coordinates</span>
+                                      <input
+                                        type="text"
+                                        placeholder="40.1234, -105.1234"
+                                        value={objective.coordinates}
+                                        onChange={(e) => updateTripDayObjective(day.id, objective.id, { coordinates: e.target.value })}
+                                      />
+                                    </label>
+                                    <label className="day-field">
+                                      <span className="day-field-label">Mileage</span>
+                                      <input
+                                        type="text"
+                                        placeholder="Mileage"
+                                        value={objective.mileage}
+                                        onChange={(e) => updateTripDayObjective(day.id, objective.id, { mileage: e.target.value })}
+                                      />
+                                    </label>
+                                    <label className="day-field">
+                                      <span className="day-field-label">Elevation Gain</span>
+                                      <input
+                                        type="text"
+                                        placeholder="Elevation gain"
+                                        value={objective.elevationGain}
+                                        onChange={(e) => updateTripDayObjective(day.id, objective.id, { elevationGain: e.target.value })}
+                                      />
+                                    </label>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="delete-objective-btn"
+                                    onClick={() => deleteTripDayObjective(day.id, objective.id)}
+                                    title="Remove objective"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <button className="delete-tab-btn" onClick={() => deleteTripDay(day.id)} title="Remove Day">×</button>
                     </div>
@@ -1358,6 +1558,22 @@ function App() {
                   <p><strong>Location:</strong> {day.location || 'No coordinates'}</p>
                   <p><strong>Mileage:</strong> {day.mileage || '—'}</p>
                   <p><strong>Elevation Gain:</strong> {day.elevationGain || '—'}</p>
+                  {day.description && <p><strong>Description:</strong> {day.description}</p>}
+                  {(day.objectives || []).length > 0 && (
+                    <div>
+                      <strong>Sub Objectives:</strong>
+                      <ul>
+                        {(day.objectives || []).map((objective, objectiveIndex) => (
+                          <li key={objective.id}>
+                            <p><strong>Objective {objectiveIndex + 1}:</strong> {objective.description || 'No description'}</p>
+                            <p><strong>Coordinates:</strong> {objective.coordinates || '—'}</p>
+                            <p><strong>Mileage:</strong> {objective.mileage || '—'}</p>
+                            <p><strong>Elevation Gain:</strong> {objective.elevationGain || '—'}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {day.notes && <p><strong>Notes:</strong> {day.notes}</p>}
                   {day.weatherLinks && (
                     <div>
