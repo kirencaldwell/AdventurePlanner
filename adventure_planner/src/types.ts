@@ -23,13 +23,23 @@ export interface Category {
   items: Item[];
 }
 
+export interface TripObjective {
+  id: string;
+  coordinates: string;
+  mileage: string;
+  elevationGain: string;
+  description: string;
+}
+
 export interface TripDay {
   id: string;
   location: string;
+  description?: string;
   notes?: string;
   weatherLinks?: string;
   mileage?: string;
   elevationGain?: string;
+  objectives?: TripObjective[];
 }
 
 export interface Trip {
