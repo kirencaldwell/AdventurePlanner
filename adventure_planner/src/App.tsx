@@ -13,7 +13,23 @@ const generateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  return Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value: string | null | undefined): value is string => {
+  return Boolean(value && UUID_PATTERN.test(value));
+};
+
+const clearJoinParam = () => {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('join');
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
 };
 
 interface WeatherRow {
@@ -55,14 +71,17 @@ function App() {
 
   // Handle Auth Session
   useEffect(() => {
+    console.log('Initializing Supabase Auth session...');
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Session initialized:', session ? 'User present' : 'No user');
       setUser(session?.user ?? null);
       if (!session) {
         setIsInitialLoad(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state changed event:', event);
       setUser(session?.user ?? null);
       if (!session) {
         setIsInitialLoad(false);
@@ -86,7 +105,6 @@ function App() {
         const { data, error } = await supabase
           .from('trips')
           .select('*')
-          .or(`user_id.eq.${user.id},shared_with.cs.{"${user.email}"}`)
           .order('last_modified', { ascending: false });
 
         if (error) {
@@ -119,10 +137,11 @@ function App() {
           console.log('No trips found, creating a new one...');
           createNewTrip('My First Adventure', user.id);
         }
-        setIsInitialLoad(false);
       } catch (err: any) {
         console.error('Failed to load trips from Supabase:', err);
         setLoadError(err.message || 'Unknown database error');
+      } finally {
+        setIsInitialLoad(false);
       }
     };
 
@@ -133,6 +152,12 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const joinTripId = params.get('join');
+
+    if (joinTripId && !isUuid(joinTripId)) {
+      console.warn('Ignoring legacy non-UUID invite link:', joinTripId);
+      clearJoinParam();
+      return;
+    }
     
     if (joinTripId && user?.email) {
       const handleJoin = async () => {
