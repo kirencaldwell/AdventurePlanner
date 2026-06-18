@@ -154,6 +154,24 @@
   align-items: center;
   justify-content: center;
   margin-top: 10px;
+  gap: 12px;
+}
+
+.auth-submit-btn.google-btn {
+  background: white;
+  color: #3c4043;
+  border: 1px solid #dadce0;
+}
+
+.auth-submit-btn.google-btn:hover:not(:disabled) {
+  background: #f8f9fa;
+  transform: translateY(-1px);
+  box-shadow: 0 1px 3px 0 rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15);
+}
+
+.google-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .auth-submit-btn:hover:not(:disabled) {

@@ -7,11 +7,29 @@ import { AuthScreen } from './AuthScreen';
 import { ShareModal } from './ShareModal';
 import { Analytics } from "@vercel/analytics/react"
 
+import type { User } from '@supabase/supabase-js';
+
 const generateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  return Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value: string | null | undefined): value is string => {
+  return Boolean(value && UUID_PATTERN.test(value));
+};
+
+const clearJoinParam = () => {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('join');
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
 };
 
 interface WeatherRow {
@@ -36,7 +54,7 @@ const ALTITUDES = [0, 3000, 6000, 10000] as const;
 const LAPSE_RATE_C_PER_M = 6.5 / 1000;
 
 function App() {
-  const [username, setUsername] = useState<string | null>(localStorage.getItem('adventure_username'));
+  const [user, setUser] = useState<User | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [currentTripId, setCurrentTripId] = useState<string | null>(null);
@@ -51,40 +69,42 @@ function App() {
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
 
-  const handleLogin = (name: string) => {
-    localStorage.setItem('adventure_username', name);
-    setUsername(name);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('adventure_username');
-    setUsername(null);
-    setTrips([]);
-    setCurrentTripId(null);
-  };
-
-  // Set initial load state
+  // Handle Auth Session
   useEffect(() => {
-    if (!username) {
-      setIsInitialLoad(false);
-    }
-  }, [username]);
+    console.log('Initializing Supabase Auth session...');
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Session initialized:', session ? 'User present' : 'No user');
+      setUser(session?.user ?? null);
+      if (!session) {
+        setIsInitialLoad(false);
+      }
+    });
 
-  // Load trips from Supabase when username is set
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state changed event:', event);
+      setUser(session?.user ?? null);
+      if (!session) {
+        setIsInitialLoad(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load trips from Supabase when user is set
   useEffect(() => {
-    if (!username) {
+    if (!user) {
       setTrips([]);
       setCurrentTripId(null);
       return;
     }
 
     const loadTrips = async () => {
-      console.log('Attempting to load trips for username:', username);
+      console.log('Attempting to load trips for user:', user.id);
       try {
         const { data, error } = await supabase
           .from('trips')
           .select('*')
-          .or(`user_id.eq.${username},shared_with.cs.{"${username}"}`)
           .order('last_modified', { ascending: false });
 
         if (error) {
@@ -103,37 +123,43 @@ function App() {
             startDate: row.start_date || '',
             days: row.days || [],
             caltopoUrl: row.caltopo_url || '',
-            debriefDiscussions: row.debrief_discussions || [],
+            debriefDiscussions: row.debriefDiscussions || [],
             userId: row.user_id,
             sharedWith: row.shared_with || [],
             lastModified: Number(row.last_modified || Date.now())
           }));
           setTrips(mappedTrips);
           
-          // Only change currentTripId if not already set or if it's the first load
           if (!currentTripId) {
             setCurrentTripId(mappedTrips[0].id);
           }
         } else {
           console.log('No trips found, creating a new one...');
-          createNewTrip('My First Adventure', username);
+          createNewTrip('My First Adventure', user.id);
         }
-        setIsInitialLoad(false);
       } catch (err: any) {
         console.error('Failed to load trips from Supabase:', err);
         setLoadError(err.message || 'Unknown database error');
+      } finally {
+        setIsInitialLoad(false);
       }
     };
 
     loadTrips();
-  }, [username]);
+  }, [user]);
 
   // Handle Join Trip from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const joinTripId = params.get('join');
+
+    if (joinTripId && !isUuid(joinTripId)) {
+      console.warn('Ignoring legacy non-UUID invite link:', joinTripId);
+      clearJoinParam();
+      return;
+    }
     
-    if (joinTripId && username) {
+    if (joinTripId && user?.email) {
       const handleJoin = async () => {
         try {
           const { data: trip, error } = await supabase
@@ -144,17 +170,15 @@ function App() {
 
           if (error || !trip) return;
 
-          if (trip.user_id !== username && !(trip.shared_with || []).includes(username)) {
-            const updatedSharedWith = [...(trip.shared_with || []), username];
+          if (trip.user_id !== user.id && !(trip.shared_with || []).includes(user.email)) {
+            const updatedSharedWith = [...(trip.shared_with || []), user.email];
             await supabase
               .from('trips')
               .update({ shared_with: updatedSharedWith })
               .eq('id', joinTripId);
             
-            // Reload trips after joining
             window.location.href = window.location.origin;
           } else {
-            // Already have access, just clear the param
             window.history.replaceState({}, document.title, window.location.pathname);
             setCurrentTripId(joinTripId);
           }
@@ -164,11 +188,11 @@ function App() {
       };
       handleJoin();
     }
-  }, [username]);
+  }, [user]);
 
   // Save trips to Supabase (debounced)
   useEffect(() => {
-    if (!username || isInitialLoad || trips.length === 0) return;
+    if (!user || isInitialLoad || trips.length === 0) return;
 
     const timeoutId = setTimeout(async () => {
       const upsertData = trips.map(t => ({
@@ -180,7 +204,7 @@ function App() {
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
         debrief_discussions: t.debriefDiscussions || [],
-        user_id: username,
+        user_id: user.id,
         shared_with: t.sharedWith || [],
         last_modified: t.lastModified
       }));
@@ -192,14 +216,13 @@ function App() {
       } else {
         console.log('Trips saved successfully');
       }
-    }, 1000); // 1 second debounce
+    }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [trips, isInitialLoad, username]);
+  }, [trips, isInitialLoad, user]);
 
-  const createNewTrip = (name: string, currentUsername = username) => {
-    console.log('createNewTrip called with name:', name, 'username:', currentUsername);
-    if (!currentUsername) return;
+  const createNewTrip = (name: string, userId = user?.id) => {
+    if (!userId) return;
     const newTrip: Trip = {
       id: generateId(),
       name,
@@ -213,7 +236,7 @@ function App() {
       days: [],
       caltopoUrl: '',
       debriefDiscussions: [],
-      userId: currentUsername,
+      userId: userId,
       sharedWith: [],
       lastModified: Date.now(),
     };
@@ -701,8 +724,8 @@ function App() {
     );
   }
 
-  if (!username) {
-    return <AuthScreen onLogin={handleLogin} />;
+  if (!user) {
+    return <AuthScreen />;
   }
 
   if (!currentTrip) {
@@ -740,8 +763,8 @@ function App() {
     <div className="app-container">
       <header className="trip-header">
         <div className="user-profile-bar">
-          <span className="user-email">Logged in as: <strong>{username}</strong></span>
-          <button onClick={handleLogout} className="logout-btn">Log Out</button>
+          <span className="user-email">Logged in as: <strong>{user.email}</strong></span>
+          <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
         </div>
         <div className="trip-info">
 ...
@@ -1042,25 +1065,34 @@ function App() {
                                 });
                               }}
                             />
-                            {day.weatherLinks && (
                               <div className="weather-links-display">
-                                {day.weatherLinks
+                                {day.weatherLinks && day.weatherLinks
                                   .split(/\n+/)
                                   .map(link => link.trim())
                                   .filter(Boolean)
-                                  .map(link => (
-                                    <a
-                                      key={link}
-                                      href={link}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="weather-link"
-                                    >
-                                      {link}
-                                    </a>
-                                  ))}
+                                  .map(link => {
+                                    // Security: Only allow http/https protocols to prevent XSS (e.g. javascript:alert)
+                                    const isSafeProtocol = link.toLowerCase().startsWith('http://') || link.toLowerCase().startsWith('https://');
+                                    if (!isSafeProtocol) {
+                                      return (
+                                        <span key={link} className="weather-link invalid" title="Only http/https links are allowed">
+                                          ⚠️ Invalid Link: {link.substring(0, 30)}...
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <a
+                                        key={link}
+                                        href={link}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="weather-link"
+                                      >
+                                        {link}
+                                      </a>
+                                    );
+                                  })}
                               </div>
-                            )}
                           </div>
                         </>
                       )}
