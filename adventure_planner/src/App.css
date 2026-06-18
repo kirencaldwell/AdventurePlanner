@@ -902,6 +902,13 @@ select {
   font-size: 0.95rem;
 }
 
+.weather-link.invalid {
+  color: #e74c3c;
+  text-decoration: none;
+  cursor: help;
+  font-style: italic;
+}
+
 .loading-screen {
   display: flex;
   flex-direction: column;

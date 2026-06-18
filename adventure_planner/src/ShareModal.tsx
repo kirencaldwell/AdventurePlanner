@@ -9,7 +9,7 @@ interface ShareModalProps {
 }
 
 export function ShareModal({ tripId, sharedWith, onClose, onUpdateSharedWith }: ShareModalProps) {
-  const [newUsername, setNewUsername] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -20,23 +20,21 @@ export function ShareModal({ tripId, sharedWith, onClose, onUpdateSharedWith }: 
     setSuccess(null);
     setLoading(true);
 
-    const targetUser = newUsername.trim().toLowerCase();
-    if (!targetUser) {
+    const targetEmail = newEmail.trim().toLowerCase();
+    if (!targetEmail) {
       setLoading(false);
       return;
     }
 
     try {
-      // Since we don't have a users table to check against, 
-      // we just add the username to the list.
-      if (sharedWith.includes(targetUser)) {
+      if (sharedWith.includes(targetEmail)) {
         throw new Error('This trip is already shared with this user.');
       }
 
-      const updatedList = [...sharedWith, targetUser];
+      const updatedList = [...sharedWith, targetEmail];
       onUpdateSharedWith(updatedList);
-      setSuccess(`Trip shared with ${targetUser}!`);
-      setNewUsername('');
+      setSuccess(`Trip shared with ${targetEmail}!`);
+      setNewEmail('');
     } catch (err: any) {
       setError(err.message || 'Failed to share trip.');
     } finally {
@@ -44,8 +42,8 @@ export function ShareModal({ tripId, sharedWith, onClose, onUpdateSharedWith }: 
     }
   };
 
-  const handleUnshare = (userToUnshare: string) => {
-    const updatedList = sharedWith.filter(u => u !== userToUnshare);
+  const handleUnshare = (emailToUnshare: string) => {
+    const updatedList = sharedWith.filter(e => e !== emailToUnshare);
     onUpdateSharedWith(updatedList);
   };
 
@@ -65,7 +63,7 @@ export function ShareModal({ tripId, sharedWith, onClose, onUpdateSharedWith }: 
 
         <div className="invite-link-section">
           <h3>Invite via Link</h3>
-          <p>Send this link to a helper. When they click it and enter their username, they'll get access to this trip.</p>
+          <p>Send this link to a helper. When they click it and sign in with Google, they'll get access to this trip.</p>
           <button onClick={copyInviteLink} className="copy-link-btn">
             📋 Copy Invite Link
           </button>
@@ -74,13 +72,13 @@ export function ShareModal({ tripId, sharedWith, onClose, onUpdateSharedWith }: 
         <div className="divider"><span>OR</span></div>
 
         <form onSubmit={handleShare} className="share-form">
-          <h3>Add by Username</h3>
+          <h3>Add by Email</h3>
           <div className="input-row">
             <input
-              type="text"
-              placeholder="Enter helper's username..."
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
+              type="email"
+              placeholder="Enter helper's email..."
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
               required
             />
             <button type="submit" disabled={loading}>
