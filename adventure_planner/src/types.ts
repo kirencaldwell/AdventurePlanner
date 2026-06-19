@@ -23,12 +23,14 @@ export interface Category {
   items: Item[];
 }
 
-export interface TripObjective {
+export interface TripActivity {
   id: string;
-  coordinates: string;
-  mileage: string;
-  elevationGain: string;
+  type: 'hiking' | 'ski-touring' | 'custom';
   description: string;
+  importance: 'mandatory' | 'optional';
+  miles: string;
+  elevationGain: string;
+  elevationLost: string;
 }
 
 export interface TripDay {
@@ -37,10 +39,10 @@ export interface TripDay {
   description?: string;
   notes?: string;
   weatherLinks?: string;
-  mileage?: string;
-  elevationGain?: string;
-  objectives?: TripObjective[];
+  activities?: TripActivity[];
 }
+
+import type { WeatherRow } from './weatherUtils';
 
 export interface Trip {
   id: string;
@@ -50,6 +52,10 @@ export interface Trip {
   startDate?: string;
   days?: TripDay[];
   caltopoUrl?: string;
+  photosUrl?: string;
+  weatherStatus?: 'Good' | 'Mild' | 'Bad' | 'Pending';
+  weatherData?: Record<number, WeatherRow>; // dayIndex -> WeatherRow
+  lastWeatherUpdate?: number; // timestamp
   debriefDiscussions?: string[];
   userId?: string;
   sharedWith?: string[];
