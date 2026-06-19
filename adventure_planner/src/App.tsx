@@ -75,6 +75,20 @@ const calculateTripStats = (trip: Trip) => {
   };
 };
 
+const getTripDateRange = (startDate: string | undefined, dayCount: number) => {
+  if (!startDate) return 'No dates set';
+  const start = new Date(startDate);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + dayCount - 1);
+  return `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+};
+
+const getTripActivitySummary = (trip: Trip) => {
+  const activities = (trip.days || []).flatMap(day => day.activities || []);
+  const types = Array.from(new Set(activities.map(a => a.type)));
+  return types.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join('/');
+};
+
 const TripDashboard = ({ trips, onViewTrip, onNewTrip, onRefreshAllWeather }: { trips: Trip[], onViewTrip: (id: string) => void, onNewTrip: () => void, onRefreshAllWeather: () => void }) => (
   <div className="dashboard-container">
     <header className="dashboard-header">
@@ -98,6 +112,10 @@ const TripDashboard = ({ trips, onViewTrip, onNewTrip, onRefreshAllWeather }: { 
         return (
           <div key={trip.id} className="trip-card" onClick={() => onViewTrip(trip.id)}>
             <h2>{trip.name}</h2>
+            <div className="trip-card-meta">
+              <span>{getTripDateRange(trip.startDate, stats.dayCount)}</span>
+              <span>{getTripActivitySummary(trip)}</span>
+            </div>
             <div className="trip-card-stats">
               <span>{stats.mileageRange}</span>
               <span>{stats.elevationRange}</span>
