@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import type { Trip, StatusId, TripObjective } from './types';
+import type { Trip, StatusId, TripActivity } from './types';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
 import { ShareModal } from './ShareModal';
 import { Analytics } from "@vercel/analytics/react"
+import { fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
 
 import type { User } from '@supabase/supabase-js';
 
@@ -32,26 +33,6 @@ const clearJoinParam = () => {
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
 };
 
-interface WeatherRow {
-  dayIndex: number;
-  date: string;
-  location: string;
-  summary: string;
-  highLow: Record<number, { high: string; low: string }>;
-  cloudCover?: number;
-  wind?: number;
-  windGust?: number;
-  visibility?: number;
-  humidity?: number;
-  freezingLevel?: number;
-  snowDepth?: number;
-  precipitation?: number;
-  snowfall?: number;
-  error?: string;
-}
-
-const ALTITUDES = [0, 3000, 6000, 10000] as const;
-const LAPSE_RATE_C_PER_M = 6.5 / 1000;
 
 const parseTripNumber = (value: string | undefined) => {
   if (!value) return 0;
@@ -71,18 +52,77 @@ const formatTripRange = (min: number, max: number, unit: string) => {
   return min === max ? `${formattedMin} ${unit}` : `${formattedMin}-${formattedMax} ${unit}`;
 };
 
+
+const calculateTripStats = (trip: Trip) => {
+  const tripDays = trip.days || [];
+  const tripActivities = tripDays.flatMap(day => day.activities || []);
+  const mandatoryMileage = tripActivities
+    .filter(a => a.importance === 'mandatory')
+    .reduce((sum, a) => sum + parseTripNumber(a.miles), 0);
+  const totalMileage = tripActivities
+    .reduce((sum, a) => sum + parseTripNumber(a.miles), 0);
+  
+  const mandatoryElevationGain = tripActivities
+    .filter(a => a.importance === 'mandatory')
+    .reduce((sum, a) => sum + parseTripNumber(a.elevationGain), 0);
+  const totalElevationGain = tripActivities
+    .reduce((sum, a) => sum + parseTripNumber(a.elevationGain), 0);
+    
+  return {
+    dayCount: tripDays.length,
+    mileageRange: formatTripRange(mandatoryMileage, totalMileage, 'mi'),
+    elevationRange: formatTripRange(mandatoryElevationGain, totalElevationGain, 'ft'),
+  };
+};
+
+const TripDashboard = ({ trips, onViewTrip, onNewTrip, onRefreshAllWeather }: { trips: Trip[], onViewTrip: (id: string) => void, onNewTrip: () => void, onRefreshAllWeather: () => void }) => (
+  <div className="dashboard-container">
+    <header className="dashboard-header">
+      <h1>My Trips</h1>
+      <div className="dashboard-actions">
+        <button onClick={onRefreshAllWeather} className="refresh-weather-btn">Refresh All Weather</button>
+        <button onClick={onNewTrip} className="new-trip-btn">+ New Trip</button>
+      </div>
+    </header>
+    <div className="trip-list">
+      {trips.map(trip => {
+        const stats = calculateTripStats(trip);
+        
+        const weatherStatus = trip.weatherStatus || 'Pending';
+        let statusColor = 'grey';
+        
+        if (weatherStatus === 'Good') statusColor = 'green';
+        else if (weatherStatus === 'Mild') statusColor = 'orange';
+        else if (weatherStatus === 'Bad') statusColor = 'red';
+        
+        return (
+          <div key={trip.id} className="trip-card" onClick={() => onViewTrip(trip.id)}>
+            <h2>{trip.name}</h2>
+            <div className="trip-card-stats">
+              <span>{stats.mileageRange}</span>
+              <span>{stats.elevationRange}</span>
+              <span style={{ color: statusColor, fontWeight: 'bold' }}>Weather: {weatherStatus}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [currentTripId, setCurrentTripId] = useState<string | null>(null);
+  const [view, setView] = useState<'dashboard' | 'trip-detail'>('trip-detail');
   const [activeTab, setActiveTab] = useState<string>('trip');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
+  const [photosUrlInput, setPhotosUrlInput] = useState('');
   const [caltopoUrlError, setCaltopoUrlError] = useState<string | null>(null);
   const [weatherRows, setWeatherRows] = useState<WeatherRow[]>([]);
-  const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState<string | null>(null);
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
@@ -141,6 +181,7 @@ function App() {
             startDate: row.start_date || '',
             days: row.days || [],
             caltopoUrl: row.caltopo_url || '',
+            photosUrl: row.photos_url || '',
             debriefDiscussions: row.debriefDiscussions || [],
             userId: row.user_id,
             sharedWith: row.shared_with || [],
@@ -260,6 +301,7 @@ function App() {
     };
     setTrips(prev => [...prev, newTrip]);
     setCurrentTripId(newTrip.id);
+    setView('trip-detail');
   };
 
   const currentTrip = trips.find(t => t.id === currentTripId) || null;
@@ -339,6 +381,10 @@ function App() {
     updateCurrentTrip(trip => ({ ...trip, caltopoUrl: url, lastModified: Date.now() }));
   };
 
+  const updatePhotosUrl = (url: string) => {
+    updateCurrentTrip(trip => ({ ...trip, photosUrl: url, lastModified: Date.now() }));
+  };
+
   const handleCaltopoLinkChange = (value: string) => {
     setCaltopoLinkInput(value);
     if (!value.trim()) {
@@ -385,21 +431,23 @@ function App() {
     }));
   };
 
-  const addTripDayObjective = (dayId: string) => {
+  const addTripDayActivity = (dayId: string) => {
     updateCurrentTrip(trip => ({
       ...trip,
       days: (trip.days || []).map(day =>
         day.id === dayId
           ? {
               ...day,
-              objectives: [
-                ...(day.objectives || []),
+              activities: [
+                ...(day.activities || []),
                 {
                   id: generateId(),
-                  coordinates: '',
-                  mileage: '',
-                  elevationGain: '',
+                  type: 'hiking',
                   description: '',
+                  importance: 'mandatory',
+                  miles: '',
+                  elevationGain: '',
+                  elevationLost: '',
                 },
               ],
             }
@@ -409,10 +457,10 @@ function App() {
     }));
   };
 
-  const updateTripDayObjective = (
+  const updateTripDayActivity = (
     dayId: string,
-    objectiveId: string,
-    updates: Partial<Omit<TripObjective, 'id'>>
+    activityId: string,
+    updates: Partial<Omit<TripActivity, 'id'>>
   ) => {
     updateCurrentTrip(trip => ({
       ...trip,
@@ -420,10 +468,10 @@ function App() {
         day.id === dayId
           ? {
               ...day,
-              objectives: (day.objectives || []).map(objective =>
-                objective.id === objectiveId
-                  ? { ...objective, ...updates }
-                  : objective
+              activities: (day.activities || []).map(activity =>
+                activity.id === activityId
+                  ? { ...activity, ...updates }
+                  : activity
               ),
             }
           : day
@@ -432,14 +480,14 @@ function App() {
     }));
   };
 
-  const deleteTripDayObjective = (dayId: string, objectiveId: string) => {
+  const deleteTripDayActivity = (dayId: string, activityId: string) => {
     updateCurrentTrip(trip => ({
       ...trip,
       days: (trip.days || []).map(day =>
         day.id === dayId
           ? {
               ...day,
-              objectives: (day.objectives || []).filter(objective => objective.id !== objectiveId),
+              activities: (day.activities || []).filter(activity => activity.id !== activityId),
             }
           : day
       ),
@@ -461,150 +509,21 @@ function App() {
   useEffect(() => {
     if (currentTrip) {
       setCaltopoLinkInput(currentTrip.caltopoUrl || '');
+      setPhotosUrlInput(currentTrip.photosUrl || '');
       setCaltopoUrlError(null);
     }
-  }, [currentTrip?.caltopoUrl]);
+  }, [currentTrip?.caltopoUrl, currentTrip?.photosUrl]);
 
-  const formatTemp = (value: number) => `${((value * 9) / 5 + 32).toFixed(1)}°F`;
-  const formatWind = (value: number | undefined) => value == null ? '-' : `${(value * 0.621371).toFixed(1)} mph`;
-  const formatVisibility = (value: number | undefined) => value == null ? '-' : `${(value * 0.621371).toFixed(1)} mi`;
-  const formatPrecip = (value: number | undefined) => value == null ? '-' : `${(value / 25.4).toFixed(2)} in`;
-  const formatSnow = (value: number | undefined) => value == null ? '-' : `${(value / 2.54).toFixed(2)} in`;
-  const formatElevation = (value: number | undefined) => value == null ? '-' : `${(value * 3.28084).toFixed(0)} ft`;
-
-  const getAltTemp = (baseTemp: number, altitudeFeet: number) => {
-    return baseTemp - LAPSE_RATE_C_PER_M * (altitudeFeet * 0.3048);
-  };
-
-  const weatherCodeLabels: Record<number, string> = {
-    0: 'Clear sky',
-    1: 'Mainly clear',
-    2: 'Partly cloudy',
-    3: 'Overcast',
-    45: 'Fog',
-    48: 'Depositing rime fog',
-    51: 'Light drizzle',
-    53: 'Moderate drizzle',
-    55: 'Dense drizzle',
-    56: 'Light freezing drizzle',
-    57: 'Dense freezing drizzle',
-    61: 'Slight rain',
-    63: 'Moderate rain',
-    65: 'Heavy rain',
-    66: 'Light freezing rain',
-    67: 'Heavy freezing rain',
-    71: 'Slight snow',
-    73: 'Moderate snow',
-    75: 'Heavy snow',
-    77: 'Snow grains',
-    80: 'Slight rain showers',
-    81: 'Moderate rain showers',
-    82: 'Violent rain showers',
-    85: 'Slight snow showers',
-    86: 'Heavy snow showers',
-    95: 'Thunderstorm',
-    96: 'Thunderstorm with hail',
-    99: 'Thunderstorm with heavy hail',
-  };
-
-  const getWeatherSummary = (code: number | undefined) => {
-    if (code === undefined || code === null) return 'Unavailable';
-    return weatherCodeLabels[code] || `Weather code ${code}`;
-  };
-
-  const parseCoordinates = (value: string) => {
-    const match = value.trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
-    if (!match) return null;
-    const latitude = parseFloat(match[1]);
-    const longitude = parseFloat(match[2]);
-    if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
-    return { latitude, longitude };
-  };
-
-  const getDayDate = (startDate: string, offset: number) => {
-    const date = new Date(startDate);
-    date.setUTCDate(date.getUTCDate() + offset);
-    return date.toISOString().split('T')[0];
-  };
-
-  const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
-    const coords = parseCoordinates(dayLocation);
-    if (!coords) {
-      return {
-        dayIndex,
-        date,
-        location: dayLocation,
-        summary: 'Invalid coordinates',
-        highLow: {
-          0: { high: '-', low: '-' },
-          3000: { high: '-', low: '-' },
-          6000: { high: '-', low: '-' },
-          10000: { high: '-', low: '-' },
-        },
-        error: 'Coordinates must be in the format: lat, lon',
-      };
-    }
-
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,cloudcover_mean,windspeed_10m_max,windgusts_10m_max,precipitation_sum,snowfall_sum,visibility_mean&hourly=relativehumidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${date}&end_date=${date}`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error('Weather lookup failed');
-    }
-    const payload = await response.json();
-    const daily = payload.daily || {};
-    const hourly = payload.hourly || {};
-    const summaryCode = daily.weathercode?.[0];
-    const maxTemp = daily.temperature_2m_max?.[0];
-    const minTemp = daily.temperature_2m_min?.[0];
-    const cloudCover = daily.cloudcover_mean?.[0];
-    const wind = daily.windspeed_10m_max?.[0];
-    const windGust = daily.windgusts_10m_max?.[0];
-    const visibility = daily.visibility_mean?.[0];
-    const precipitation = daily.precipitation_sum?.[0];
-    const snowfall = daily.snowfall_sum?.[0];
-    const humidityValues = hourly.relativehumidity_2m || [];
-    const freezingValues = hourly.freezing_level_height || [];
-    const snowDepthValues = hourly.snow_depth || [];
-
-    const humidity = humidityValues.length > 0 ? Math.round(humidityValues.reduce((sum: number, value: number) => sum + value, 0) / humidityValues.length) : undefined;
-    const freezingLevel = freezingValues.length > 0 ? Math.round(freezingValues.reduce((sum: number, value: number) => sum + value, 0) / freezingValues.length) : undefined;
-    const snowDepth = snowDepthValues.length > 0 ? Math.max(...snowDepthValues) : undefined;
-
-    const highLow = Object.fromEntries(
-      ALTITUDES.map((altitude) => {
-        const high = maxTemp != null ? getAltTemp(maxTemp, altitude) : NaN;
-        const low = minTemp != null ? getAltTemp(minTemp, altitude) : NaN;
-        return [
-          altitude,
-          {
-            high: Number.isFinite(high) ? formatTemp(high) : '-',
-            low: Number.isFinite(low) ? formatTemp(low) : '-',
-          },
-        ];
-      })
-    ) as Record<number, { high: string; low: string }>;
-
-    return {
-      dayIndex,
-      date,
-      location: dayLocation,
-      summary: getWeatherSummary(summaryCode),
-      highLow,
-      cloudCover,
-      wind,
-      windGust,
-      visibility,
-      humidity,
-      freezingLevel,
-      snowDepth,
-      precipitation,
-      snowfall,
-    };
-  };
 
   const fetchWeather = async () => {
     if (!currentTrip) return;
+    const isCacheValid = currentTrip.lastWeatherUpdate && (Date.now() - currentTrip.lastWeatherUpdate < 3600000);
+    
+    if (isCacheValid && currentTrip.weatherData && Object.keys(currentTrip.weatherData).length > 0) {
+      setWeatherRows(Object.values(currentTrip.weatherData).sort((a,b) => a.dayIndex - b.dayIndex));
+      return;
+    }
+
     if (!currentTrip.startDate) {
       setWeatherRows([]);
       setWeatherError('Please set a Trip start date first.');
@@ -616,42 +535,16 @@ function App() {
       return;
     }
 
-    setWeatherLoading(true);
-    setWeatherError(null);
-
-    const rows: WeatherRow[] = [];
-    for (let i = 0; i < currentTrip.days.length; i += 1) {
-      const day = currentTrip.days[i];
-      const date = getDayDate(currentTrip.startDate, i);
-      try {
-        const row = await fetchWeatherForDay(i, day.location, date);
-        rows.push(row);
-      } catch (error: any) {
-        rows.push({
-          dayIndex: i,
-          date,
-          location: day.location,
-          summary: 'Forecast unavailable',
-          highLow: {
-            0: { high: '-', low: '-' },
-            3000: { high: '-', low: '-' },
-            6000: { high: '-', low: '-' },
-            10000: { high: '-', low: '-' },
-          },
-          error: error?.message || 'Unable to fetch weather data',
-        });
-      }
-    }
-
-    setWeatherRows(rows);
-    setWeatherLoading(false);
+    // Otherwise, refresh (triggering refresh for all is fine for now, or I can just refresh this one)
+    // Let's trigger a full refresh to be safe and consistent.
+    await refreshAllWeather(true);
   };
 
   useEffect(() => {
     if (activeTab !== 'weather') return;
     fetchWeather();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, currentTrip?.startDate, currentTrip?.days?.length, currentTrip?.days?.map(day => day.location).join('|')]);
+  }, [activeTab, currentTrip?.startDate, currentTrip?.days?.length, currentTrip?.days?.map(day => day.location).join('|'), currentTrip?.lastWeatherUpdate]);
 
   const updateStatus = (categoryId: string, itemId: string, personId: string, statusId: StatusId) => {
     updateCurrentTrip(trip => ({
@@ -717,6 +610,7 @@ function App() {
     };
     setTrips(prev => [...prev, newTrip]);
     setCurrentTripId(newTrip.id);
+    setView('trip-detail');
   };
 
   const deleteTrip = async () => {
@@ -788,6 +682,64 @@ function App() {
     setActiveTab('weather');
   };
 
+  const refreshAllWeather = async (force = false) => {
+    const updatedTrips = await Promise.all(trips.map(async (trip) => {
+      // Check if cache is valid (less than an hour old AND same data)
+      const isCacheValid = trip.lastWeatherUpdate && 
+                           (Date.now() - trip.lastWeatherUpdate < 3600000) &&
+                           trip.weatherData &&
+                           Object.values(trip.weatherData).every((row, i) => 
+                             row.date === getDayDate(trip.startDate || '', i) &&
+                             row.location === (trip.days?.[i]?.location || '')
+                           );
+
+      if (!force && isCacheValid) {
+        return trip;
+      }
+
+      if (!trip.startDate || !trip.days || trip.days.length === 0 || trip.days.some(d => d.location.trim() === '')) {
+        return { ...trip, weatherStatus: 'Pending' as const, weatherData: {}, lastWeatherUpdate: Date.now() };
+      }
+
+      const weatherData: Record<number, WeatherRow> = {};
+      let stormyCount = 0;
+      let dayCount = 0;
+
+      for (let i = 0; i < trip.days.length; i += 1) {
+        const day = trip.days[i];
+        const date = getDayDate(trip.startDate, i);
+        try {
+          const weather = await fetchWeatherForDay(i, day.location, date);
+
+          if (weather.error) {
+            return { ...trip, weatherStatus: 'Pending' as const, weatherData: {}, lastWeatherUpdate: Date.now() };
+          }
+
+          weatherData[i] = weather;
+          dayCount++;
+          if (isStormyWeatherCode(weather.weatherCode)) {
+            stormyCount++;
+          }
+        } catch (err) {
+          return { ...trip, weatherStatus: 'Pending' as const, weatherData: {}, lastWeatherUpdate: Date.now() };
+        }
+      }
+
+      let status: 'Good' | 'Mild' | 'Bad' = 'Good';
+      if (stormyCount === 0) {
+        status = 'Good';
+      } else if (stormyCount === dayCount) {
+        status = 'Bad';
+      } else {
+        status = 'Mild';
+      }
+
+      return { ...trip, weatherStatus: status, weatherData, lastWeatherUpdate: Date.now() };
+    }));
+
+    setTrips(updatedTrips);
+  };
+
   if (isInitialLoad) {
     return (
       <div className="loading-screen">
@@ -808,6 +760,10 @@ function App() {
     return <AuthScreen />;
   }
 
+  if (view === 'dashboard') {
+    return <TripDashboard trips={trips} onViewTrip={(id) => { setCurrentTripId(id); setView('trip-detail'); }} onNewTrip={() => createNewTrip('New Trip')} onRefreshAllWeather={refreshAllWeather} />;
+  }
+
   if (!currentTrip) {
     return (
       <div className="loading-screen">
@@ -817,21 +773,7 @@ function App() {
   }
 
   const tripDays = currentTrip.days || [];
-  const baseMileage = tripDays.reduce((sum, day) => sum + parseTripNumber(day.mileage), 0);
-  const objectiveMileage = tripDays.reduce(
-    (sum, day) => sum + (day.objectives || []).reduce((objectiveSum, objective) => objectiveSum + parseTripNumber(objective.mileage), 0),
-    0
-  );
-  const baseElevationGain = tripDays.reduce((sum, day) => sum + parseTripNumber(day.elevationGain), 0);
-  const objectiveElevationGain = tripDays.reduce(
-    (sum, day) => sum + (day.objectives || []).reduce((objectiveSum, objective) => objectiveSum + parseTripNumber(objective.elevationGain), 0),
-    0
-  );
-  const tripStats = {
-    dayCount: tripDays.length,
-    mileageRange: formatTripRange(baseMileage, baseMileage + objectiveMileage, 'mi'),
-    elevationRange: formatTripRange(baseElevationGain, baseElevationGain + objectiveElevationGain, 'ft'),
-  };
+  const tripStats = calculateTripStats(currentTrip);
   const activeCategory = currentTrip.categories.find(c => c.id === activeTab);
 
   const handlePrintAllTabs = () => {
@@ -862,6 +804,7 @@ function App() {
           <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
         </div>
         <div className="trip-info">
+          <button onClick={() => setView('dashboard')} className="back-to-list-btn">← Back to List</button>
           <div className="trip-title-block">
             <div className="trip-title-wrapper">
               <h1 
@@ -1032,6 +975,21 @@ function App() {
               </div>
               <button onClick={addDiscussion}>+ Add Discussion</button>
             </div>
+            
+            <div className="photos-link-section" style={{ marginBottom: '1rem' }}>
+              <h3>Google Photos Album</h3>
+              <input
+                type="text"
+                placeholder="Paste Google Photos album link here"
+                value={photosUrlInput}
+                onChange={(e) => {
+                  setPhotosUrlInput(e.target.value);
+                  updatePhotosUrl(e.target.value);
+                }}
+                style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--border-radius)', border: '1px solid #ccc' }}
+              />
+            </div>
+
             <div className="discussion-list">
               {(currentTrip.debriefDiscussions || []).map((discussion, index) => (
                 <textarea
@@ -1052,11 +1010,7 @@ function App() {
                 <p>Using trip start date, day schedule, and day coordinates.</p>
               </div>
             </div>
-            {weatherLoading ? (
-              <div className="weather-placeholder">
-                <p>Loading forecast...</p>
-              </div>
-            ) : weatherError ? (
+            {weatherError ? (
               <div className="weather-placeholder">
                 <h2>Weather Lookup</h2>
                 <p>{weatherError}</p>
@@ -1307,44 +1261,6 @@ function App() {
                               }}
                             />
                           </label>
-                          <label className="day-field">
-                            <span className="day-field-label">Mileage</span>
-                            <input
-                              type="text"
-                              className="day-metric-input"
-                              placeholder="Mileage"
-                              value={day.mileage || ''}
-                              onChange={(e) => {
-                                updateCurrentTrip(trip => {
-                                  const days = [...(trip.days || [])];
-                                  days[index] = {
-                                    ...days[index],
-                                    mileage: e.target.value
-                                  };
-                                  return { ...trip, days, lastModified: Date.now() };
-                                });
-                              }}
-                            />
-                          </label>
-                          <label className="day-field">
-                            <span className="day-field-label">Elevation Gain</span>
-                            <input
-                              type="text"
-                              className="day-metric-input"
-                              placeholder="Elevation gain"
-                              value={day.elevationGain || ''}
-                              onChange={(e) => {
-                                updateCurrentTrip(trip => {
-                                  const days = [...(trip.days || [])];
-                                  days[index] = {
-                                    ...days[index],
-                                    elevationGain: e.target.value
-                                  };
-                                  return { ...trip, days, lastModified: Date.now() };
-                                });
-                              }}
-                            />
-                          </label>
                           <label className="day-field day-description-field">
                             <span className="day-field-label">Description</span>
                             <textarea
@@ -1365,50 +1281,61 @@ function App() {
                           </label>
                         </div>
 
-                        <div className="day-objectives">
-                          <div className="day-objectives-header">
-                            <h3>Sub Objectives</h3>
+                        <div className="day-activities">
+                          <div className="day-activities-header">
+                            <h3>Activities</h3>
                             <button
                               type="button"
-                              className="add-objective-btn"
-                              onClick={() => addTripDayObjective(day.id)}
+                              className="add-activity-btn"
+                              onClick={() => addTripDayActivity(day.id)}
                             >
-                              + Add Objective
+                              + Add Activity
                             </button>
                           </div>
-                          {(day.objectives || []).length === 0 ? (
-                            <p className="empty-objectives">No sub objectives yet.</p>
+                          {(day.activities || []).length === 0 ? (
+                            <p className="empty-activities">No activities yet.</p>
                           ) : (
-                            <div className="objective-list">
-                              {(day.objectives || []).map((objective, objectiveIndex) => (
-                                <div key={objective.id} className="objective-row">
-                                  <div className="objective-number">Objective {objectiveIndex + 1}</div>
-                                  <div className="objective-fields">
-                                    <label className="day-field objective-description-field">
+                            <div className="activity-list">
+                              {(day.activities || []).map((activity, activityIndex) => (
+                                <div key={activity.id} className="activity-row">
+                                  <div className="activity-number">Activity {activityIndex + 1}</div>
+                                  <div className="activity-fields">
+                                    <label className="day-field">
+                                      <span className="day-field-label">Type</span>
+                                      <select
+                                        value={activity.type}
+                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { type: e.target.value as any })}
+                                      >
+                                        <option value="hiking">Hiking</option>
+                                        <option value="ski-touring">Ski Touring</option>
+                                        <option value="custom">Custom</option>
+                                      </select>
+                                    </label>
+                                    <label className="day-field">
+                                      <span className="day-field-label">Importance</span>
+                                      <select
+                                        value={activity.importance}
+                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { importance: e.target.value as any })}
+                                      >
+                                        <option value="mandatory">Mandatory</option>
+                                        <option value="optional">Optional</option>
+                                      </select>
+                                    </label>
+                                    <label className="day-field activity-description-field">
                                       <span className="day-field-label">Description</span>
                                       <textarea
-                                        className="objective-description-input"
-                                        placeholder="Describe this objective..."
-                                        value={objective.description}
-                                        onChange={(e) => updateTripDayObjective(day.id, objective.id, { description: e.target.value })}
+                                        placeholder="Describe this activity..."
+                                        value={activity.description}
+                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { description: e.target.value })}
                                       />
                                     </label>
                                     <label className="day-field">
-                                      <span className="day-field-label">Coordinates</span>
+                                      <span className="day-field-label">Miles</span>
                                       <input
                                         type="text"
-                                        placeholder="40.1234, -105.1234"
-                                        value={objective.coordinates}
-                                        onChange={(e) => updateTripDayObjective(day.id, objective.id, { coordinates: e.target.value })}
-                                      />
-                                    </label>
-                                    <label className="day-field">
-                                      <span className="day-field-label">Mileage</span>
-                                      <input
-                                        type="text"
-                                        placeholder="Mileage"
-                                        value={objective.mileage}
-                                        onChange={(e) => updateTripDayObjective(day.id, objective.id, { mileage: e.target.value })}
+                                        placeholder="Miles"
+                                        value={activity.miles}
+                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { miles: e.target.value })}
                                       />
                                     </label>
                                     <label className="day-field">
@@ -1416,16 +1343,25 @@ function App() {
                                       <input
                                         type="text"
                                         placeholder="Elevation gain"
-                                        value={objective.elevationGain}
-                                        onChange={(e) => updateTripDayObjective(day.id, objective.id, { elevationGain: e.target.value })}
+                                        value={activity.elevationGain}
+                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { elevationGain: e.target.value })}
+                                      />
+                                    </label>
+                                    <label className="day-field">
+                                      <span className="day-field-label">Elevation Lost</span>
+                                      <input
+                                        type="text"
+                                        placeholder="Elevation lost"
+                                        value={activity.elevationLost}
+                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { elevationLost: e.target.value })}
                                       />
                                     </label>
                                   </div>
                                   <button
                                     type="button"
-                                    className="delete-objective-btn"
-                                    onClick={() => deleteTripDayObjective(day.id, objective.id)}
-                                    title="Remove objective"
+                                    className="delete-activity-btn"
+                                    onClick={() => deleteTripDayActivity(day.id, activity.id)}
+                                    title="Remove activity"
                                   >
                                     ×
                                   </button>
@@ -1556,19 +1492,19 @@ function App() {
                 <div key={day.id} className="print-day-card">
                   <h3>Day {index + 1}</h3>
                   <p><strong>Location:</strong> {day.location || 'No coordinates'}</p>
-                  <p><strong>Mileage:</strong> {day.mileage || '—'}</p>
-                  <p><strong>Elevation Gain:</strong> {day.elevationGain || '—'}</p>
                   {day.description && <p><strong>Description:</strong> {day.description}</p>}
-                  {(day.objectives || []).length > 0 && (
+                  {(day.activities || []).length > 0 && (
                     <div>
-                      <strong>Sub Objectives:</strong>
+                      <strong>Activities:</strong>
                       <ul>
-                        {(day.objectives || []).map((objective, objectiveIndex) => (
-                          <li key={objective.id}>
-                            <p><strong>Objective {objectiveIndex + 1}:</strong> {objective.description || 'No description'}</p>
-                            <p><strong>Coordinates:</strong> {objective.coordinates || '—'}</p>
-                            <p><strong>Mileage:</strong> {objective.mileage || '—'}</p>
-                            <p><strong>Elevation Gain:</strong> {objective.elevationGain || '—'}</p>
+                        {(day.activities || []).map((activity, activityIndex) => (
+                          <li key={activity.id}>
+                            <p><strong>Activity {activityIndex + 1}:</strong> {activity.description || 'No description'}</p>
+                            <p><strong>Type:</strong> {activity.type}</p>
+                            <p><strong>Importance:</strong> {activity.importance}</p>
+                            <p><strong>Miles:</strong> {activity.miles || '—'}</p>
+                            <p><strong>Elevation Gain:</strong> {activity.elevationGain || '—'}</p>
+                            <p><strong>Elevation Lost:</strong> {activity.elevationLost || '—'}</p>
                           </li>
                         ))}
                       </ul>

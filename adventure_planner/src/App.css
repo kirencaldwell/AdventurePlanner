@@ -799,12 +799,12 @@ select {
   flex-shrink: 0;
 }
 
-.day-objectives {
+.day-activities {
   border-top: 1px solid #eef2f2;
   padding-top: 1rem;
 }
 
-.day-objectives-header {
+.day-activities-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -812,13 +812,13 @@ select {
   margin-bottom: 0.75rem;
 }
 
-.day-objectives-header h3 {
+.day-activities-header h3 {
   margin: 0;
   color: #2c3e50;
   font-size: 1rem;
 }
 
-.day-row .add-objective-btn {
+.day-row .add-activity-btn {
   width: auto;
   height: auto;
   border-radius: var(--border-radius);
@@ -829,19 +829,19 @@ select {
   white-space: nowrap;
 }
 
-.empty-objectives {
+.empty-activities {
   margin: 0;
   color: #7f8c8d;
   font-size: 0.95rem;
 }
 
-.objective-list {
+.activity-list {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.objective-row {
+.activity-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 0.75rem;
@@ -852,7 +852,7 @@ select {
   border: 1px solid #e6eeee;
 }
 
-.objective-number {
+.activity-number {
   font-weight: 700;
   color: #34495e;
   padding-top: 0.65rem;
@@ -1162,4 +1162,74 @@ select {
 
 .share-btn-accent:hover {
   background: #2ea043;
+}
+
+
+.dashboard-container {
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.dashboard-header {
+  margin-bottom: 2rem;
+}
+
+.trip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.trip-card {
+  padding: 1.5rem;
+  background: white;
+  border-radius: var(--border-radius);
+  border: 1px solid #e6eeee;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.trip-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-color);
+}
+
+.trip-card h2 {
+  margin: 0 0 0.5rem 0;
+}
+
+.trip-card-stats {
+  display: flex;
+  gap: 1rem;
+  color: #7f8c8d;
+  font-size: 0.9rem;
+}
+
+.back-to-list-btn {
+  margin-bottom: 1rem;
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  cursor: pointer;
+  padding: 0;
+  font-weight: 600;
+}
+
+.dashboard-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.refresh-weather-btn {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.refresh-weather-btn:hover {
+  background: #e0e0e0;
 }
