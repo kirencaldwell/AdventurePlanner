@@ -1233,3 +1233,11 @@ select {
 .refresh-weather-btn:hover {
   background: #e0e0e0;
 }
+
+.trip-card-meta {
+  display: flex;
+  gap: 1rem;
+  color: #7f8c8d;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
