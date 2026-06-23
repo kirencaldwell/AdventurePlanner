@@ -239,26 +239,21 @@ function App() {
     if (joinTripId && user?.email) {
       const handleJoin = async () => {
         try {
-          const { data: trip, error } = await supabase
-            .from('trips')
-            .select('shared_with, user_id')
-            .eq('id', joinTripId)
-            .single();
+          // Use the SECURITY DEFINER RPC so RLS doesn't block non-owners
+          // from adding themselves to shared_with.
+          const { error: rpcError } = await supabase.rpc('join_trip', {
+            trip_id: joinTripId,
+          });
 
-          if (error || !trip) return;
-
-          if (trip.user_id !== user.id && !(trip.shared_with || []).includes(user.email)) {
-            const updatedSharedWith = [...(trip.shared_with || []), user.email];
-            await supabase
-              .from('trips')
-              .update({ shared_with: updatedSharedWith })
-              .eq('id', joinTripId);
-            
-            window.location.href = window.location.origin;
-          } else {
-            window.history.replaceState({}, document.title, window.location.pathname);
-            setCurrentTripId(joinTripId);
+          if (rpcError) {
+            console.error('Error joining trip via RPC:', rpcError);
+            return;
           }
+
+          // Reload without the ?join= param so the app fetches the
+          // newly shared trip from Supabase.
+          clearJoinParam();
+          window.location.reload();
         } catch (err) {
           console.error('Error joining trip:', err);
         }
