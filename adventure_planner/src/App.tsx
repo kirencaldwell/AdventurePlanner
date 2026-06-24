@@ -653,14 +653,13 @@ function App() {
     if (!currentTrip || !user?.email) return;
     if (!confirm(`Are you sure you want to remove yourself from the trip "${currentTrip.name}"?`)) return;
 
-    const newSharedWith = (currentTrip.sharedWith || []).filter(email => email !== user.email);
     const remainingTrips = trips.filter(t => t.id !== currentTripId);
 
-    // Update Supabase to remove the current user from shared_with
-    const { error } = await supabase
-      .from('trips')
-      .update({ shared_with: newSharedWith })
-      .eq('id', currentTripId);
+    // Use the SECURITY DEFINER RPC so RLS doesn't block non-owners
+    // from removing themselves from shared_with.
+    const { error } = await supabase.rpc('leave_trip', {
+      trip_id: currentTripId,
+    });
 
     if (error) {
       console.error('Failed to leave trip:', error);
