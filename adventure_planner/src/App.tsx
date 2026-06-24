@@ -651,20 +651,39 @@ function App() {
 
   const leaveTrip = async () => {
     if (!currentTrip || !user?.email) return;
+    const userEmail = user.email.toLowerCase();
+
+    const isActuallyOwner = user.id === currentTrip.userId;
+    if (isActuallyOwner) {
+      alert("Owners cannot leave their own trip. Use 'Delete Trip' instead.");
+      return;
+    }
+
     if (!confirm(`Are you sure you want to remove yourself from the trip "${currentTrip.name}"?`)) return;
 
     const remainingTrips = trips.filter(t => t.id !== currentTripId);
 
-    // Use the SECURITY DEFINER RPC so RLS doesn't block non-owners
-    // from removing themselves from shared_with.
-    const { error } = await supabase.rpc('leave_trip', {
+    // Try RPC first
+    console.log('Attempting to leave trip via RPC...');
+    const { error: rpcError } = await supabase.rpc('leave_trip', {
       trip_id: currentTripId,
     });
 
-    if (error) {
-      console.error('Failed to leave trip:', error);
-      alert('Failed to remove yourself from the trip on the server.');
-      return;
+    if (rpcError) {
+      console.warn('RPC leave_trip failed, attempting direct update fallback:', rpcError);
+
+      // Fallback: try direct update in case RPC doesn't exist
+      const newSharedWith = (currentTrip.sharedWith || []).filter(e => e.toLowerCase() !== userEmail);
+      const { error: updateError } = await supabase
+        .from('trips')
+        .update({ shared_with: newSharedWith })
+        .eq('id', currentTripId);
+
+      if (updateError) {
+        console.error('Both RPC and fallback update failed:', updateError);
+        alert('Failed to remove yourself from the trip on the server.');
+        return;
+      }
     }
 
     setTrips(remainingTrips);
@@ -1657,12 +1676,22 @@ function App() {
           tripId={currentTrip.id}
           sharedWith={currentTrip.sharedWith || []}
           onClose={() => setIsShareModalOpen(false)}
+          isOwner={user.id === currentTrip.userId}
+          currentUserEmail={user.email || ''}
           onUpdateSharedWith={(newSharedWith) => {
-            updateCurrentTrip(trip => ({
-              ...trip,
-              sharedWith: newSharedWith,
-              lastModified: Date.now()
-            }));
+            const userEmail = user.email?.toLowerCase();
+            const wasRemoved = userEmail && !(newSharedWith.map(e => e.toLowerCase()).includes(userEmail));
+
+            if (wasRemoved && user.id !== currentTrip.userId) {
+              leaveTrip();
+              setIsShareModalOpen(false);
+            } else {
+              updateCurrentTrip(trip => ({
+                ...trip,
+                sharedWith: newSharedWith,
+                lastModified: Date.now()
+              }));
+            }
           }}
         />
       )}

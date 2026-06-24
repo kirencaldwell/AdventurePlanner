@@ -5,10 +5,12 @@ interface ShareModalProps {
   tripId: string;
   sharedWith: string[];
   onClose: () => void;
+  isOwner: boolean;
+  currentUserEmail: string;
   onUpdateSharedWith: (newSharedWith: string[]) => void;
 }
 
-export function ShareModal({ tripId, sharedWith, onClose, onUpdateSharedWith }: ShareModalProps) {
+export function ShareModal({ tripId, sharedWith, onClose, isOwner, currentUserEmail, onUpdateSharedWith }: ShareModalProps) {
   const [newEmail, setNewEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,18 +97,23 @@ export function ShareModal({ tripId, sharedWith, onClose, onUpdateSharedWith }: 
             <p className="empty-list">This trip isn't shared with anyone yet.</p>
           ) : (
             <ul className="shared-list">
-              {sharedWith.map(user => (
-                <li key={user} className="shared-user-item">
-                  <span>{user}</span>
-                  <button 
-                    onClick={() => handleUnshare(user)} 
-                    className="unshare-btn"
-                    title="Remove access"
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
+              {sharedWith.map(email => {
+                const isMe = email.toLowerCase() === currentUserEmail.toLowerCase();
+                if (!isOwner && !isMe) return null;
+
+                return (
+                  <li key={email} className="shared-user-item">
+                    <span>{email}</span>
+                    <button
+                      onClick={() => handleUnshare(email)}
+                      className="unshare-btn"
+                      title={isMe ? "Leave trip" : "Remove access"}
+                    >
+                      {isMe ? "Leave" : "Remove"}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
