@@ -652,42 +652,44 @@ function App() {
   const leaveTrip = async () => {
     if (!currentTrip || !user?.email) return;
     const userEmail = user.email.toLowerCase();
-
+  
     const isActuallyOwner = user.id === currentTrip.userId;
     if (isActuallyOwner) {
       alert("Owners cannot leave their own trip. Use 'Delete Trip' instead.");
       return;
     }
-
+  
     if (!confirm(`Are you sure you want to remove yourself from the trip "${currentTrip.name}"?`)) return;
-
+  
     const remainingTrips = trips.filter(t => t.id !== currentTripId);
-
-    // Try RPC first
+  
     console.log('Attempting to leave trip via RPC...');
+    
+    // 💡 FIX 1: Change target_trip_id to trip_id to match your Postgres argument name
     const { error: rpcError } = await supabase.rpc('leave_trip', {
-      target_trip_id: currentTripId,
+      trip_id: currentTripId, 
     });
-
+  
     if (rpcError) {
       console.warn('RPC leave_trip failed, attempting direct update fallback:', rpcError);
-
-      // Fallback: try direct update in case RPC doesn't exist
-      const newSharedWith = (currentTrip.sharedWith || []).filter(e => e.toLowerCase() !== userEmail);
+  
+      // 💡 FIX 2: Fallback now targets the brand-new trip_members join table instead of updating the trip column directly
       const { error: updateError } = await supabase
-        .from('trips')
-        .update({ shared_with: newSharedWith })
-        .eq('id', currentTripId);
-
+        .from('trip_members')
+        .delete()
+        .eq('trip_id', currentTripId)
+        .eq('user_id', user.id);
+  
       if (updateError) {
         console.error('Both RPC and fallback update failed:', updateError);
         alert('Failed to remove yourself from the trip on the server.');
         return;
       }
     }
-
+  
+    // Frontend state management remains correct and handles the UI update cleanly!
     setTrips(remainingTrips);
-
+  
     if (remainingTrips.length > 0) {
       setCurrentTripId(remainingTrips[0].id);
     } else {
