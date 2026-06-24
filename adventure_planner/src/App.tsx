@@ -650,8 +650,8 @@ function App() {
   };
 
   const leaveTrip = async () => {
-    if (!currentTrip || !user?.email) return;
-    const userEmail = user.email.toLowerCase();
+    // Removed userEmail from the validation line
+    if (!currentTrip || !user?.id) return; 
   
     const isActuallyOwner = user.id === currentTrip.userId;
     if (isActuallyOwner) {
@@ -665,15 +665,13 @@ function App() {
   
     console.log('Attempting to leave trip via RPC...');
     
-    // 💡 FIX 1: Change target_trip_id to trip_id to match your Postgres argument name
     const { error: rpcError } = await supabase.rpc('leave_trip', {
-      trip_id: currentTripId,
+      trip_id: currentTripId, 
     });
   
     if (rpcError) {
       console.warn('RPC leave_trip failed, attempting direct update fallback:', rpcError);
   
-      // 💡 FIX 2: Fallback now targets the brand-new trip_members join table instead of updating the trip column directly
       const { error: updateError } = await supabase
         .from('trip_members')
         .delete()
@@ -687,7 +685,6 @@ function App() {
       }
     }
   
-    // Frontend state management remains correct and handles the UI update cleanly!
     setTrips(remainingTrips);
   
     if (remainingTrips.length > 0) {
