@@ -667,7 +667,7 @@ function App() {
     
     // 💡 FIX 1: Change target_trip_id to trip_id to match your Postgres argument name
     const { error: rpcError } = await supabase.rpc('leave_trip', {
-      trip_id: currentTripId, 
+      trip_id: currentTripId,
     });
   
     if (rpcError) {
