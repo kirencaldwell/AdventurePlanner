@@ -200,7 +200,7 @@ function App() {
             days: row.days || [],
             caltopoUrl: row.caltopo_url || '',
             photosUrl: row.photos_url || '',
-            debriefDiscussions: row.debriefDiscussions || [],
+            debriefDiscussions: row.debrief_discussions || [],
             userId: row.user_id,
             sharedWith: row.shared_with || [],
             lastModified: Number(row.last_modified || Date.now())
@@ -276,7 +276,7 @@ function App() {
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
         debrief_discussions: t.debriefDiscussions || [],
-        user_id: user.id,
+        user_id: t.userId || user.id,
         shared_with: t.sharedWith || [],
         last_modified: t.lastModified
       }));
@@ -649,6 +649,34 @@ function App() {
     }
   };
 
+  const leaveTrip = async () => {
+    if (!currentTrip || !user?.email) return;
+    if (!confirm(`Are you sure you want to remove yourself from the trip "${currentTrip.name}"?`)) return;
+
+    const newSharedWith = (currentTrip.sharedWith || []).filter(email => email !== user.email);
+    const remainingTrips = trips.filter(t => t.id !== currentTripId);
+
+    // Update Supabase to remove the current user from shared_with
+    const { error } = await supabase
+      .from('trips')
+      .update({ shared_with: newSharedWith })
+      .eq('id', currentTripId);
+
+    if (error) {
+      console.error('Failed to leave trip:', error);
+      alert('Failed to remove yourself from the trip on the server.');
+      return;
+    }
+
+    setTrips(remainingTrips);
+
+    if (remainingTrips.length > 0) {
+      setCurrentTripId(remainingTrips[0].id);
+    } else {
+      createNewTrip('My New Adventure');
+    }
+  };
+
   const updateTripName = (name: string) => {
     updateCurrentTrip(trip => ({ ...trip, name, lastModified: Date.now() }));
   };
@@ -850,7 +878,11 @@ function App() {
             <button onClick={handlePrintAllTabs}>Download All Tabs</button>
             <button onClick={copyTrip}>Copy Trip</button>
             <button onClick={resetTrip}>Reset Items</button>
-            <button onClick={deleteTrip} className="danger">Delete Trip</button>
+            {user.id === currentTrip.userId ? (
+              <button onClick={deleteTrip} className="danger">Delete Trip</button>
+            ) : (
+              <button onClick={leaveTrip} className="danger">Remove Trip</button>
+            )}
             <select 
               value={currentTrip.id} 
               onChange={(e) => {
