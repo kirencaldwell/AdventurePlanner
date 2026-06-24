@@ -891,30 +891,26 @@ function App() {
             </div>
           </div>
           <div className="trip-actions">
+            <button onClick={() => {
+              const name = prompt('Trip Name?');
+              if (name) createNewTrip(name);
+            }}>Create New Trip</button>
             <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
-            <button onClick={handlePrintAllTabs}>Download All Tabs</button>
             <button onClick={copyTrip}>Copy Trip</button>
-            <button onClick={resetTrip}>Reset Items</button>
             {user.id === currentTrip.userId ? (
               <button onClick={deleteTrip} className="danger">Delete Trip</button>
             ) : (
               <button onClick={leaveTrip} className="danger">Remove Trip</button>
             )}
+            <button onClick={resetTrip}>Reset Items</button>
+            <button onClick={handlePrintAllTabs}>Download All Tabs</button>
             <select 
               value={currentTrip.id} 
-              onChange={(e) => {
-                if (e.target.value === 'new') {
-                  const name = prompt('Trip Name?');
-                  if (name) createNewTrip(name);
-                } else {
-                  setCurrentTripId(e.target.value);
-                }
-              }}
+              onChange={(e) => setCurrentTripId(e.target.value)}
             >
               {trips.map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
-              <option value="new">+ Create New Trip</option>
             </select>
           </div>
         </div>
