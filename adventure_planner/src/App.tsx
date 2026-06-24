@@ -666,7 +666,7 @@ function App() {
     // Try RPC first
     console.log('Attempting to leave trip via RPC...');
     const { error: rpcError } = await supabase.rpc('leave_trip', {
-      target_trip_id: currentTripId,
+      trip_id: currentTripId,
     });
 
     if (rpcError) {
