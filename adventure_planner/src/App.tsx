@@ -650,44 +650,43 @@ function App() {
   };
 
   const leaveTrip = async () => {
-    if (!currentTrip || !user?.email) return;
-    const userEmail = user.email.toLowerCase();
-
+    // Removed userEmail from the validation line
+    if (!currentTrip || !user?.id) return; 
+  
     const isActuallyOwner = user.id === currentTrip.userId;
     if (isActuallyOwner) {
       alert("Owners cannot leave their own trip. Use 'Delete Trip' instead.");
       return;
     }
-
+  
     if (!confirm(`Are you sure you want to remove yourself from the trip "${currentTrip.name}"?`)) return;
-
+  
     const remainingTrips = trips.filter(t => t.id !== currentTripId);
-
-    // Try RPC first
+  
     console.log('Attempting to leave trip via RPC...');
+    
     const { error: rpcError } = await supabase.rpc('leave_trip', {
-      trip_id: currentTripId,
+      trip_id: currentTripId, 
     });
-
+  
     if (rpcError) {
       console.warn('RPC leave_trip failed, attempting direct update fallback:', rpcError);
-
-      // Fallback: try direct update in case RPC doesn't exist
-      const newSharedWith = (currentTrip.sharedWith || []).filter(e => e.toLowerCase() !== userEmail);
+  
       const { error: updateError } = await supabase
-        .from('trips')
-        .update({ shared_with: newSharedWith })
-        .eq('id', currentTripId);
-
+        .from('trip_members')
+        .delete()
+        .eq('trip_id', currentTripId)
+        .eq('user_id', user.id);
+  
       if (updateError) {
         console.error('Both RPC and fallback update failed:', updateError);
         alert('Failed to remove yourself from the trip on the server.');
         return;
       }
     }
-
+  
     setTrips(remainingTrips);
-
+  
     if (remainingTrips.length > 0) {
       setCurrentTripId(remainingTrips[0].id);
     } else {
