@@ -1009,10 +1009,10 @@ function App() {
                   <tbody>
                     {notPackedItems.map(({ person, category, item, status }) => (
                       <tr key={`${person.id}-${category.id}-${item.id}`}>
-                        <td data-label="Person">{person.name}</td>
-                        <td data-label="Category">{category.name}</td>
-                        <td data-label="Item" className="item-name">{item.name}</td>
-                        <td data-label="Status">
+                        <td>{person.name}</td>
+                        <td>{category.name}</td>
+                        <td className="item-name">{item.name}</td>
+                        <td>
                           <span className="not-packed-status-tag">
                             {DEFAULT_STATUSES.find(s => s.id === status)?.label || status}
                           </span>
@@ -1501,7 +1501,7 @@ function App() {
                 <tbody>
                   {activeCategory.items.map(item => (
                     <tr key={item.id}>
-                      <td data-label="Item" className="item-name">
+                      <td className="item-name">
                         {item.name}
                         <button
                           className="delete-item-btn"
@@ -1512,7 +1512,7 @@ function App() {
                         </button>
                       </td>
                       {currentTrip.people.map(person => (
-                        <td key={person.id} data-label={person.name}>
+                        <td key={person.id}>
                           <select 
                             value={item.personStatuses[person.id] || 'not-packed'}
                             onChange={(e) => updateStatus(activeCategory.id, item.id, person.id, e.target.value)}
