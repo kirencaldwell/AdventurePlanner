@@ -437,7 +437,7 @@ select {
   }
 
   .day-inputs,
-  .objective-fields {
+  .activity-fields {
     grid-template-columns: 1fr;
   }
 
@@ -449,7 +449,7 @@ select {
     padding-top: 0;
   }
 
-  .day-row .delete-objective-btn {
+  .day-row .delete-activity-btn {
     margin-top: 0;
   }
 
@@ -859,14 +859,14 @@ select {
   white-space: nowrap;
 }
 
-.objective-fields {
+.activity-fields {
   display: grid;
   grid-template-columns: 2fr 1.2fr 0.8fr 1fr;
   gap: 0.75rem;
   min-width: 0;
 }
 
-.objective-description-field {
+.activity-description-field {
   grid-row: span 2;
 }
 
@@ -875,7 +875,7 @@ select {
 }
 
 .day-description-input,
-.objective-description-input {
+.activity-description-input {
   width: 100%;
   min-height: 104px;
   padding: 0.9rem 1rem;
@@ -888,7 +888,7 @@ select {
   resize: vertical;
 }
 
-.day-row .delete-objective-btn {
+.day-row .delete-activity-btn {
   width: 36px;
   height: 36px;
   font-size: 1rem;
@@ -950,7 +950,7 @@ select {
 
 .weather-cards-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: 1fr;
   gap: 2rem;
   max-width: 1400px;
   margin: 0 auto;
@@ -960,10 +960,10 @@ select {
   background: var(--white);
   border-radius: var(--border-radius);
   box-shadow: var(--shadow);
-  padding: 1.5rem;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
   transition: box-shadow 0.2s;
 }
 
@@ -999,8 +999,14 @@ select {
 
 .weather-card-details {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .weather-card-details {
+    grid-template-columns: 1fr;
+  }
 }
 
 .weather-detail-row {
@@ -1240,4 +1246,43 @@ select {
   color: #7f8c8d;
   font-size: 0.85rem;
   margin-bottom: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .packing-matrix {
+    min-width: unset;
+  }
+  .packing-matrix thead {
+    display: none;
+  }
+  .packing-matrix tr {
+    display: block;
+    margin-bottom: 1.5rem;
+    border: 1px solid #eee;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+  }
+  .packing-matrix td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: right;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eee;
+  }
+  .packing-matrix td::before {
+    content: attr(data-label);
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    color: #7f8c8d;
+    margin-right: 1rem;
+    text-align: left;
+  }
+  .item-name {
+    width: 100% !important;
+  }
+  .packing-matrix td:last-child {
+    border-bottom: none;
+  }
 }
