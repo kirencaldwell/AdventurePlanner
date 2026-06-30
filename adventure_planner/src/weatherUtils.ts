@@ -132,8 +132,7 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     };
   }
 
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,windspeed_10m_max,windgusts_10m_max,precipitation_sum,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${date}&end_date=${date}`;
-  const response = await fetch(url);
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,windspeed_10m_max,windgusts_10m_max,precipitation_sum,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${date}&end_date=${date}`;  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Weather lookup failed');
   }
@@ -241,7 +240,7 @@ export const fetchWeatherForLocationAndRange = async (
     }));
   }
 
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode&timezone=UTC&start_date=${startDate}&end_date=${endDate}`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,windspeed_10m_max,windgusts_10m_max,precipitation_sum,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${date}&end_date=${date}`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Weather lookup failed');
