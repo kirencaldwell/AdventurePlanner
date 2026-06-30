@@ -268,7 +268,7 @@ function App() {
             days: row.days || [],
             caltopoUrl: row.caltopo_url || '',
             photosUrl: row.photos_url || '',
-            debriefDiscussions: row.debriefDiscussions || [],
+            debriefDiscussions: row.debrief_discussions || [],
             userId: row.user_id,
             sharedWith: row.shared_with || [],
             lastModified: Number(row.last_modified || Date.now())
@@ -344,7 +344,7 @@ function App() {
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
         debrief_discussions: t.debriefDiscussions || [],
-        user_id: user.id,
+        user_id: t.userId || user.id,
         shared_with: t.sharedWith || [],
         last_modified: t.lastModified
       }));
@@ -717,6 +717,51 @@ function App() {
     }
   };
 
+  const leaveTrip = async () => {
+    // Removed userEmail from the validation line
+    if (!currentTrip || !user?.id) return; 
+  
+    const isActuallyOwner = user.id === currentTrip.userId;
+    if (isActuallyOwner) {
+      alert("Owners cannot leave their own trip. Use 'Delete Trip' instead.");
+      return;
+    }
+  
+    if (!confirm(`Are you sure you want to remove yourself from the trip "${currentTrip.name}"?`)) return;
+  
+    const remainingTrips = trips.filter(t => t.id !== currentTripId);
+  
+    console.log('Attempting to leave trip via RPC...');
+    
+    const { error: rpcError } = await supabase.rpc('leave_trip', {
+      trip_id: currentTripId, 
+    });
+  
+    if (rpcError) {
+      console.warn('RPC leave_trip failed, attempting direct update fallback:', rpcError);
+  
+      const { error: updateError } = await supabase
+        .from('trip_members')
+        .delete()
+        .eq('trip_id', currentTripId)
+        .eq('user_id', user.id);
+  
+      if (updateError) {
+        console.error('Both RPC and fallback update failed:', updateError);
+        alert('Failed to remove yourself from the trip on the server.');
+        return;
+      }
+    }
+  
+    setTrips(remainingTrips);
+  
+    if (remainingTrips.length > 0) {
+      setCurrentTripId(remainingTrips[0].id);
+    } else {
+      createNewTrip('My New Adventure');
+    }
+  };
+
   const updateTripName = (name: string) => {
     updateCurrentTrip(trip => ({ ...trip, name, lastModified: Date.now() }));
   };
@@ -928,26 +973,26 @@ function App() {
             </div>
           </div>
           <div className="trip-actions">
+            <button onClick={() => {
+              const name = prompt('Trip Name?');
+              if (name) createNewTrip(name);
+            }}>Create New Trip</button>
             <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
-            <button onClick={handlePrintAllTabs}>Download All Tabs</button>
             <button onClick={copyTrip}>Copy Trip</button>
+            {user.id === currentTrip.userId ? (
+              <button onClick={deleteTrip} className="danger">Delete Trip</button>
+            ) : (
+              <button onClick={leaveTrip} className="danger">Remove Trip</button>
+            )}
             <button onClick={resetTrip}>Reset Items</button>
-            <button onClick={deleteTrip} className="danger">Delete Trip</button>
+            <button onClick={handlePrintAllTabs}>Download All Tabs</button>
             <select 
               value={currentTrip.id} 
-              onChange={(e) => {
-                if (e.target.value === 'new') {
-                  const name = prompt('Trip Name?');
-                  if (name) createNewTrip(name);
-                } else {
-                  setCurrentTripId(e.target.value);
-                }
-              }}
+              onChange={(e) => setCurrentTripId(e.target.value)}
             >
               {trips.map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
-              <option value="new">+ Create New Trip</option>
             </select>
           </div>
         </div>
@@ -1708,12 +1753,22 @@ function App() {
           tripId={currentTrip.id}
           sharedWith={currentTrip.sharedWith || []}
           onClose={() => setIsShareModalOpen(false)}
+          isOwner={user.id === currentTrip.userId}
+          currentUserEmail={user.email || ''}
           onUpdateSharedWith={(newSharedWith) => {
-            updateCurrentTrip(trip => ({
-              ...trip,
-              sharedWith: newSharedWith,
-              lastModified: Date.now()
-            }));
+            const userEmail = user.email?.toLowerCase();
+            const wasRemoved = userEmail && !(newSharedWith.map(e => e.toLowerCase()).includes(userEmail));
+
+            if (wasRemoved && user.id !== currentTrip.userId) {
+              leaveTrip();
+              setIsShareModalOpen(false);
+            } else {
+              updateCurrentTrip(trip => ({
+                ...trip,
+                sharedWith: newSharedWith,
+                lastModified: Date.now()
+              }));
+            }
           }}
         />
       )}
