@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import type { Trip, StatusId, TripActivity } from './types';
+import type { StartingDayForecast } from './weatherUtils';
+import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
 import { ShareModal } from './ShareModal';
-import { Analytics } from "@vercel/analytics/react"
-import { fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
-
+import { Analytics } from "@vercel/analytics/react";
 import type { User } from '@supabase/supabase-js';
+
 
 const generateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -89,38 +90,100 @@ const getTripActivitySummary = (trip: Trip) => {
   return types.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join('/');
 };
 
-const TripDashboard = ({ trips, onViewTrip, onNewTrip, onRefreshAllWeather }: { trips: Trip[], onViewTrip: (id: string) => void, onNewTrip: () => void, onRefreshAllWeather: () => void }) => (
+const weatherCodeEmoji = (code: number | undefined): string => {
+  if (code === undefined || code === null) return '—';
+  if (code === 0) return '☀️';
+  if (code === 1) return '🌤️';
+  if (code === 2) return '⛅';
+  if (code === 3) return '☁️';
+  if (code === 45 || code === 48) return '🌫️';
+  if (code >= 51 && code <= 57) return '🌦️';
+  if (code >= 61 && code <= 67) return '🌧️';
+  if (code >= 71 && code <= 77) return '❄️';
+  if (code >= 80 && code <= 82) return '🌦️';
+  if (code === 85 || code === 86) return '🌨️';
+  if (code >= 95) return '⛈️';
+  return '🌡️';
+};
+
+const likelihoodClass = (pct: number): string => {
+  if (pct >= 80) return 'good';
+  if (pct >= 50) return 'mild';
+  return 'bad';
+};
+
+const formatShortDate = (dateStr: string): string => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+const TripDashboard = ({
+  trips,
+  onViewTrip,
+  onNewTrip,
+  onRefreshAllWeather,
+  forecastData,
+}: {
+  trips: Trip[];
+  onViewTrip: (id: string) => void;
+  onNewTrip: () => void;
+  onRefreshAllWeather: () => void;
+  forecastData: Record<string, StartingDayForecast[]>;
+}) => (
   <div className="dashboard-container">
     <header className="dashboard-header">
       <h1>My Trips</h1>
       <div className="dashboard-actions">
-        <button onClick={onRefreshAllWeather} className="refresh-weather-btn">Refresh All Weather</button>
+        <button onClick={onRefreshAllWeather} className="refresh-weather-btn">🔄 Refresh Weather</button>
         <button onClick={onNewTrip} className="new-trip-btn">+ New Trip</button>
       </div>
     </header>
     <div className="trip-list">
-      {trips.map(trip => {
+      {trips.map((trip) => {
         const stats = calculateTripStats(trip);
-        
         const weatherStatus = trip.weatherStatus || 'Pending';
-        let statusColor = 'grey';
-        
-        if (weatherStatus === 'Good') statusColor = 'green';
-        else if (weatherStatus === 'Mild') statusColor = 'orange';
-        else if (weatherStatus === 'Bad') statusColor = 'red';
-        
+        let statusColor = '#9ca3af';
+        if (weatherStatus === 'Good') statusColor = '#22c55e';
+        else if (weatherStatus === 'Mild') statusColor = '#f59e0b';
+        else if (weatherStatus === 'Bad') statusColor = '#ef4444';
+        const forecasts = forecastData[trip.id] || [];
         return (
           <div key={trip.id} className="trip-card" onClick={() => onViewTrip(trip.id)}>
-            <h2>{trip.name}</h2>
+            <div className="trip-card-header">
+              <h2>{trip.name}</h2>
+              <span className="weather-status-badge" style={{ background: statusColor }}>
+                {weatherStatus}
+              </span>
+            </div>
             <div className="trip-card-meta">
-              <span>{getTripDateRange(trip.startDate, stats.dayCount)}</span>
-              <span>{getTripActivitySummary(trip)}</span>
+              <span>📅 {getTripDateRange(trip.startDate, stats.dayCount)}</span>
+              <span>🏔️ {getTripActivitySummary(trip)}</span>
             </div>
             <div className="trip-card-stats">
               <span>{stats.mileageRange}</span>
               <span>{stats.elevationRange}</span>
-              <span style={{ color: statusColor, fontWeight: 'bold' }}>Weather: {weatherStatus}</span>
             </div>
+            {forecasts.length > 0 && (
+              <div className="forecast-section" onClick={(e) => e.stopPropagation()}>
+                <div className="forecast-section-label">7-Day Start Likelihood ({trip.days?.length ?? 0}-day trip)</div>
+                <div className="forecast-grid">
+                  {forecasts.map((fd) => (
+                    <div key={fd.startDate} className={`forecast-card likelihood-${likelihoodClass(fd.likelihood)}`}>
+                      <div className="forecast-date">{formatShortDate(fd.startDate)}</div>
+                      <div className="forecast-likelihood-pct">{fd.likelihood}%</div>
+                      <div className="forecast-days-icons">
+                        {fd.days.map((d, idx) => (
+                          <span key={idx} className="forecast-day-icon" title={`Day ${idx + 1}: ${d.summary}`}>
+                            {weatherCodeEmoji(d.weatherCode)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -138,6 +201,10 @@ function App() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
+
+  // Forecast data keyed by trip id (7-day dashboard)
+  const [forecastData, setForecastData] = useState<Record<string, StartingDayForecast[]>>({});
+
   const [photosUrlInput, setPhotosUrlInput] = useState('');
   const [caltopoUrlError, setCaltopoUrlError] = useState<string | null>(null);
   const [weatherRows, setWeatherRows] = useState<WeatherRow[]>([]);
@@ -181,6 +248,7 @@ function App() {
         const { data, error } = await supabase
           .from('trips')
           .select('*')
+          .or(`user_id.eq.${user.id},shared_with.cs.{"${user.email}"}`)
           .order('last_modified', { ascending: false });
 
         if (error) {
@@ -696,6 +764,7 @@ function App() {
   };
 
   const refreshAllWeather = async (force = false) => {
+    const today = getTodayString();
     const updatedTrips = await Promise.all(trips.map(async (trip) => {
       // Check if cache is valid (less than an hour old AND same data)
       const isCacheValid = trip.lastWeatherUpdate && 
@@ -751,6 +820,19 @@ function App() {
     }));
 
     setTrips(updatedTrips);
+
+    // Also fetch 7-day dashboard forecasts for all trips
+    const newForecasts: Record<string, StartingDayForecast[]> = {};
+    for (const trip of updatedTrips) {
+      if (trip.days && trip.days.length > 0) {
+        try {
+          newForecasts[trip.id] = await fetchTripDashboardForecast(trip, today);
+        } catch (err) {
+          console.error('Failed to fetch dashboard forecast for trip', trip.id, err);
+        }
+      }
+    }
+    setForecastData(newForecasts);
   };
 
   if (isInitialLoad) {
@@ -774,7 +856,7 @@ function App() {
   }
 
   if (view === 'dashboard') {
-    return <TripDashboard trips={trips} onViewTrip={(id) => { setCurrentTripId(id); setView('trip-detail'); }} onNewTrip={() => createNewTrip('New Trip')} onRefreshAllWeather={refreshAllWeather} />;
+    return <TripDashboard trips={trips} onViewTrip={(id) => { setCurrentTripId(id); setView('trip-detail'); }} onNewTrip={() => createNewTrip('New Trip')} onRefreshAllWeather={refreshAllWeather} forecastData={forecastData} />;
   }
 
   if (!currentTrip) {

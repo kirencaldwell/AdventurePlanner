@@ -1,4 +1,5 @@
 // Utility functions for weather fetching and processing
+import type { Trip } from './types';
 
 
 export interface WeatherRow {
@@ -165,4 +166,134 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     snowfall,
     weatherCode: summaryCode,
   };
+};
+
+export interface DayForecast {
+  date: string;
+  weatherCode?: number;
+  summary: string;
+}
+
+export interface StartingDayForecast {
+  startDate: string;
+  likelihood: number; // 0 to 100
+  stormyCount: number;
+  totalDays: number;
+  days: DayForecast[];
+}
+
+export const getTodayString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export const fetchWeatherForLocationAndRange = async (
+  location: string,
+  startDate: string,
+  endDate: string
+): Promise<{ date: string; weatherCode?: number; error?: string }[]> => {
+  const coords = parseCoordinates(location);
+  
+  // Calculate how many days are in this range to return appropriate dummy data if needed
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = Math.abs(end.getTime() - start.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+  if (!coords) {
+    return Array.from({ length: diffDays }).map((_, idx) => ({
+      date: getDayDate(startDate, idx),
+      weatherCode: undefined,
+      error: 'Invalid coordinates',
+    }));
+  }
+
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode&timezone=UTC&start_date=${startDate}&end_date=${endDate}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Weather lookup failed');
+  }
+  const payload = await response.json();
+  const daily = payload.daily || {};
+  const dates = daily.time || [];
+  const weatherCodes = daily.weathercode || [];
+
+  return Array.from({ length: diffDays }).map((_, index) => ({
+    date: dates[index] || getDayDate(startDate, index),
+    weatherCode: weatherCodes[index],
+  }));
+};
+
+export const fetchTripDashboardForecast = async (
+  trip: Trip,
+  todayStr: string
+): Promise<StartingDayForecast[]> => {
+  if (!trip.days || trip.days.length === 0) {
+    return [];
+  }
+
+  const N = trip.days.length;
+  // We will fetch the 7-day weather forecast range for each day of the trip.
+  // For trip day j, the range of dates is from getDayDate(todayStr, j) to getDayDate(todayStr, 6 + j).
+  const dayForecastPromises = trip.days.map(async (day, j) => {
+    const startRangeDate = getDayDate(todayStr, j);
+    const endRangeDate = getDayDate(todayStr, 6 + j);
+    try {
+      const forecast = await fetchWeatherForLocationAndRange(day.location, startRangeDate, endRangeDate);
+      return { success: true as const, forecast };
+    } catch (err: any) {
+      console.error(`Failed to fetch weather range for day ${j} location ${day.location}:`, err);
+      return { success: false as const, error: err.message };
+    }
+  });
+
+  const dayForecastResults = await Promise.all(dayForecastPromises);
+
+  // If any of the days failed, we can't fully compute the forecasts, but let's handle errors gracefully.
+  if (dayForecastResults.some(res => !res.success)) {
+    throw new Error('Some weather requests failed');
+  }
+
+  const startingForecasts: StartingDayForecast[] = [];
+
+  for (let i = 0; i < 7; i++) {
+    const startDate = getDayDate(todayStr, i);
+    let stormyCount = 0;
+    const days: DayForecast[] = [];
+
+    for (let j = 0; j < N; j++) {
+      const dayRes = dayForecastResults[j];
+      if (dayRes.success && dayRes.forecast && dayRes.forecast[i]) {
+        const item = dayRes.forecast[i];
+        const isStormy = isStormyWeatherCode(item.weatherCode);
+        if (isStormy) {
+          stormyCount++;
+        }
+        days.push({
+          date: item.date,
+          weatherCode: item.weatherCode,
+          summary: getWeatherSummary(item.weatherCode),
+        });
+      } else {
+        days.push({
+          date: getDayDate(startDate, j),
+          summary: 'No data',
+        });
+      }
+    }
+
+    const likelihood = Math.round(((N - stormyCount) / N) * 100);
+    startingForecasts.push({
+      startDate,
+      likelihood,
+      stormyCount,
+      totalDays: N,
+      days,
+    });
+  }
+
+  return startingForecasts;
 };
