@@ -92,6 +92,13 @@ export const getDayDate = (startDate: string, offset: number) => {
   return date.toISOString().split('T')[0];
 };
 
+export const isDateWithinForecastRange = (dateStr: string) => {
+  const target = new Date(dateStr);
+  const now = new Date(getTodayString());
+  const diffDays = (target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays >= -90 && diffDays <= 16;
+};
+
 export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
   const coords = parseCoordinates(dayLocation);
   if (!coords) {
@@ -107,6 +114,21 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
         10000: { high: '-', low: '-' },
       },
       error: 'Coordinates must be in the format: lat, lon',
+    };
+  }
+
+  if (!isDateWithinForecastRange(date)) {
+    return {
+      dayIndex,
+      date,
+      location: dayLocation,
+      summary: 'Outside forecast range (max 16 days)',
+      highLow: {
+        0: { high: '-', low: '-' },
+        3000: { high: '-', low: '-' },
+        6000: { high: '-', low: '-' },
+        10000: { high: '-', low: '-' },
+      },
     };
   }
 
@@ -208,6 +230,14 @@ export const fetchWeatherForLocationAndRange = async (
       date: getDayDate(startDate, idx),
       weatherCode: undefined,
       error: 'Invalid coordinates',
+    }));
+  }
+
+  if (!isDateWithinForecastRange(endDate)) {
+    return Array.from({ length: diffDays }).map((_, idx) => ({
+      date: getDayDate(startDate, idx),
+      weatherCode: undefined,
+      error: 'Outside forecast range',
     }));
   }
 
