@@ -34,6 +34,27 @@ const clearJoinParam = () => {
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
 };
 
+const STORAGE_KEYS = {
+  view: 'adventure-planner-view',
+  currentTripId: 'adventure-planner-current-trip-id',
+  activeTab: 'adventure-planner-active-tab',
+};
+
+const getStoredViewState = (): { view: 'dashboard' | 'trip-detail'; currentTripId: string | null; activeTab: string } | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const savedView = window.sessionStorage.getItem(STORAGE_KEYS.view);
+    const savedTripId = window.sessionStorage.getItem(STORAGE_KEYS.currentTripId);
+    const savedActiveTab = window.sessionStorage.getItem(STORAGE_KEYS.activeTab);
+    return {
+      view: savedView === 'trip-detail' ? 'trip-detail' : 'dashboard',
+      currentTripId: savedTripId || null,
+      activeTab: savedActiveTab || 'trip',
+    };
+  } catch {
+    return null;
+  }
+};
 
 const parseTripNumber = (value: string | undefined) => {
   if (!value) return 0;
@@ -78,10 +99,10 @@ const calculateTripStats = (trip: Trip) => {
 
 const getTripDateRange = (startDate: string | undefined, dayCount: number) => {
   if (!startDate) return 'No dates set';
-  const start = new Date(startDate);
+  const start = new Date(`${startDate}T00:00:00Z`);
   const end = new Date(start);
   end.setUTCDate(start.getUTCDate() + dayCount - 1);
-  return `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  return `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
 };
 
 const getTripActivitySummary = (trip: Trip) => {
@@ -358,9 +379,9 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
-  const [currentTripId, setCurrentTripId] = useState<string | null>(null);
-  const [view, setView] = useState<'dashboard' | 'trip-detail'>('dashboard');
-  const [activeTab, setActiveTab] = useState<string>('trip');
+  const [currentTripId, setCurrentTripId] = useState<string | null>(() => getStoredViewState()?.currentTripId ?? null);
+  const [view, setView] = useState<'dashboard' | 'trip-detail'>(() => getStoredViewState()?.view ?? 'dashboard');
+  const [activeTab, setActiveTab] = useState<string>(() => getStoredViewState()?.activeTab ?? 'trip');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [hasForcedDashboard, setHasForcedDashboard] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -376,6 +397,17 @@ function App() {
   const [selectedWeatherDetail, setSelectedWeatherDetail] = useState<{ isOpen: boolean; trip: Trip | null; row: WeatherRow | null; day?: TripDay }>({ isOpen: false, trip: null, row: null });
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(STORAGE_KEYS.view, view);
+      window.sessionStorage.setItem(STORAGE_KEYS.currentTripId, currentTripId || '');
+      window.sessionStorage.setItem(STORAGE_KEYS.activeTab, activeTab);
+    } catch {
+      // Ignore storage errors so the app can keep working.
+    }
+  }, [view, currentTripId, activeTab]);
 
   // Handle Auth Session
   useEffect(() => {
@@ -408,11 +440,17 @@ function App() {
     }
 
     if (!hasForcedDashboard) {
-      console.log('Dashboard bootstrap: forcing dashboard view after auth');
-      setHasForcedDashboard(true);
-      setCurrentTripId(null);
-      setView('dashboard');
-      setActiveTab('trip');
+      const restoredState = getStoredViewState();
+      const shouldRestoreTripDetail = Boolean(restoredState?.currentTripId && restoredState.view === 'trip-detail');
+      if (!shouldRestoreTripDetail) {
+        console.log('Dashboard bootstrap: forcing dashboard view after auth');
+        setHasForcedDashboard(true);
+        setCurrentTripId(null);
+        setView('dashboard');
+        setActiveTab('trip');
+      } else {
+        setHasForcedDashboard(true);
+      }
     }
 
     const loadTrips = async () => {
@@ -449,15 +487,18 @@ function App() {
           }));
           setTrips(mappedTrips);
           
-          if (!currentTripId) {
+          const tripStillExists = currentTripId ? mappedTrips.some(trip => trip.id === currentTripId) : false;
+          if (!tripStillExists) {
             setCurrentTripId(null);
+            setView('dashboard');
+            setActiveTab('trip');
           }
-          setView('dashboard');
         } else {
           console.log('Dashboard load: no trips found; staying on dashboard.');
           setTrips([]);
           setCurrentTripId(null);
           setView('dashboard');
+          setActiveTab('trip');
         }
       } catch (err: any) {
         console.error('Failed to load trips from Supabase:', err);
