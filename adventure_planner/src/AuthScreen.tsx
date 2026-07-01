@@ -10,11 +10,15 @@ export function AuthScreen() {
     setLoading(true);
     setError(null);
     try {
-      const redirectTarget = `${window.location.origin}/`;
+      const redirectTarget = `${window.location.origin}/?auth=google`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectTarget,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
       if (error) throw error;
