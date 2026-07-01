@@ -397,6 +397,7 @@ function App() {
   const [selectedWeatherDetail, setSelectedWeatherDetail] = useState<{ isOpen: boolean; trip: Trip | null; row: WeatherRow | null; day?: TripDay }>({ isOpen: false, trip: null, row: null });
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
+  const [packingListSourceTripId, setPackingListSourceTripId] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -911,6 +912,73 @@ function App() {
     }));
   };
 
+  const copyPackingListFromTrip = () => {
+    if (!currentTrip) return;
+
+    const sourceTrip = trips.find(trip => trip.id === packingListSourceTripId);
+    if (!sourceTrip || sourceTrip.id === currentTrip.id) {
+      alert('Please choose a different trip to copy from.');
+      return;
+    }
+
+    const sourceCategories = sourceTrip.categories || [];
+    const hasItemsToCopy = sourceCategories.some(category => (category.items || []).length > 0);
+    if (!hasItemsToCopy) {
+      alert(`The selected trip "${sourceTrip.name}" does not have any packing items to copy.`);
+      return;
+    }
+
+    const copiedItemCount = sourceCategories.reduce((count, category) => count + (category.items || []).length, 0);
+
+    updateCurrentTrip(trip => {
+      const categories = [...(trip.categories || [])];
+
+      sourceCategories.forEach(sourceCategory => {
+        const existingCategory = categories.find(category => category.name === sourceCategory.name);
+        const sourceItems = sourceCategory.items || [];
+        const newItems = sourceItems.map(item => {
+          const personStatuses: Record<string, string> = {};
+          trip.people.forEach(person => {
+            const matchingSourcePerson = sourceTrip.people.find(sourcePerson =>
+              sourcePerson.name.trim().toLowerCase() === person.name.trim().toLowerCase()
+            );
+            if (matchingSourcePerson) {
+              const sourceStatus = item.personStatuses[matchingSourcePerson.id];
+              if (sourceStatus) {
+                personStatuses[person.id] = sourceStatus;
+              }
+            }
+          });
+
+          return {
+            id: generateId(),
+            name: item.name,
+            personStatuses,
+          };
+        });
+
+        if (existingCategory) {
+          existingCategory.items = [...existingCategory.items, ...newItems];
+        } else {
+          categories.push({
+            id: generateId(),
+            name: sourceCategory.name || 'General',
+            items: newItems,
+          });
+        }
+      });
+
+      return {
+        ...trip,
+        categories,
+        lastModified: Date.now(),
+      };
+    });
+
+    setPackingListSourceTripId('');
+    alert(`Copied ${copiedItemCount} item(s) from "${sourceTrip.name}" into "${currentTrip.name}".`);
+  };
+
   const copyTrip = () => {
     if (!currentTrip) return;
     const newTrip: Trip = {
@@ -1258,6 +1326,19 @@ function App() {
             }}>Create New Trip</button>
             <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
             <button onClick={copyTrip}>Copy Trip</button>
+            <div className="trip-action-copy-row">
+              <select
+                value={packingListSourceTripId}
+                onChange={(e) => setPackingListSourceTripId(e.target.value)}
+                aria-label="Choose a trip to copy packing items from"
+              >
+                <option value="">Copy packing list from…</option>
+                {trips.filter(trip => trip.id !== currentTrip.id).map(trip => (
+                  <option key={trip.id} value={trip.id}>{trip.name}</option>
+                ))}
+              </select>
+              <button onClick={copyPackingListFromTrip}>Copy Packing List</button>
+            </div>
             {user.id === currentTrip.userId ? (
               <button onClick={deleteTrip} className="danger">Delete Trip</button>
             ) : (
