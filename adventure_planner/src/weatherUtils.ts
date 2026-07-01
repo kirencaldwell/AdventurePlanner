@@ -105,17 +105,24 @@ export const getDayDate = (startDate: string, offset: number) => {
   return date.toISOString().split('T')[0];
 };
 
+const isDateInPast = (dateStr: string) => {
+  const target = toUtcDateOnly(dateStr);
+  const now = toUtcDateOnly(getTodayString());
+  return target.getTime() < now.getTime();
+};
+
 export const isDateWithinForecastRange = (dateStr: string) => {
   const target = toUtcDateOnly(dateStr);
   const now = toUtcDateOnly(getTodayString());
   const diffDays = Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  return diffDays >= 0 && diffDays <= 16;
+  return diffDays <= 16;
 };
 
-const buildWeatherForecastUrl = (coords: { latitude: number; longitude: number }, startDate: string, endDate: string) => {
+const buildWeatherDataUrl = (coords: { latitude: number; longitude: number }, startDate: string, endDate: string) => {
   const safeStart = normalizeDateString(startDate);
   const safeEnd = normalizeDateString(endDate);
-  return `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
+  const baseUrl = isDateInPast(safeEnd) ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
+  return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
 };
 
 export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
@@ -151,7 +158,7 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     };
   }
 
-  const url = buildWeatherForecastUrl(coords, date, date);
+  const url = buildWeatherDataUrl(coords, date, date);
   const response = await fetch(url);
   if (!response.ok) {
     return {
@@ -272,7 +279,7 @@ export const fetchWeatherForLocationAndRange = async (
     }));
   }
 
-  const url = buildWeatherForecastUrl(coords, startDate, endDate);
+  const url = buildWeatherDataUrl(coords, startDate, endDate);
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Weather lookup failed');
