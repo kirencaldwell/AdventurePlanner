@@ -10,10 +10,11 @@ export function AuthScreen() {
     setLoading(true);
     setError(null);
     try {
+      const redirectTarget = `${window.location.origin}/`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.href,
+          redirectTo: redirectTarget,
         },
       });
       if (error) throw error;
