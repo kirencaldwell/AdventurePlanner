@@ -109,7 +109,7 @@ export const isDateWithinForecastRange = (dateStr: string) => {
   const target = toUtcDateOnly(dateStr);
   const now = toUtcDateOnly(getTodayString());
   const diffDays = Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  return diffDays >= -90 && diffDays <= 16;
+  return diffDays >= 0 && diffDays <= 16;
 };
 
 const buildWeatherForecastUrl = (coords: { latitude: number; longitude: number }, startDate: string, endDate: string) => {
@@ -141,7 +141,7 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
       dayIndex,
       date,
       location: dayLocation,
-      summary: 'Outside forecast range (max 16 days)',
+      summary: 'Forecast unavailable for this date',
       highLow: {
         0: { high: '-', low: '-' },
         3000: { high: '-', low: '-' },
@@ -154,7 +154,19 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
   const url = buildWeatherForecastUrl(coords, date, date);
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error('Weather lookup failed');
+    return {
+      dayIndex,
+      date,
+      location: dayLocation,
+      summary: 'Weather service unavailable',
+      highLow: {
+        0: { high: '-', low: '-' },
+        3000: { high: '-', low: '-' },
+        6000: { high: '-', low: '-' },
+        10000: { high: '-', low: '-' },
+      },
+      error: 'Weather service unavailable',
+    };
   }
   const payload = await response.json();
   const daily = payload.daily || {};
