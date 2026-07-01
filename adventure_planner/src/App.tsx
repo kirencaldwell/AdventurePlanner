@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import './App.css';
 import type { Trip, StatusId, TripActivity, TripDay } from './types';
 import type { StartingDayForecast } from './weatherUtils';
-import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate, isDateWithinForecastRange } from './weatherUtils';
+import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
@@ -139,7 +139,11 @@ const WeatherDayCard = ({
       <div className="weather-card-title">
         <h3>Day {row.dayIndex + 1} - {row.date}</h3>
         <p className="weather-location">{row.location || 'Missing coordinates'}</p>
-        <p className="weather-summary">{row.summary}</p>
+        {row.summary === 'Forecast unavailable for this date' || row.summary === 'Weather service unavailable' ? (
+          <p className="weather-unavailable-message">Forecast not available yet for this trip date.</p>
+        ) : (
+          <p className="weather-summary">{row.summary}</p>
+        )}
       </div>
     </div>
 
@@ -260,7 +264,7 @@ const TripDashboard = ({
   onNewTrip: () => void;
   onRefreshAllWeather: () => void;
   forecastData: Record<string, StartingDayForecast[]>;
-  onOpenWeatherDetail: (trip: Trip, dayIndex: number) => void;
+  onOpenWeatherDetail: (trip: Trip, forecastDate: string) => void;
 }) => (
   <div className="dashboard-container">
     <header className="dashboard-header">
@@ -278,6 +282,7 @@ const TripDashboard = ({
         if (weatherStatus === 'Good') statusColor = '#22c55e';
         else if (weatherStatus === 'Mild') statusColor = '#f59e0b';
         else if (weatherStatus === 'Bad') statusColor = '#ef4444';
+        else if (weatherStatus === 'Too Far in the Future') statusColor = '#6366f1';
         const forecasts = forecastData[trip.id] || [];
         const tripDayCount = trip.days?.length ?? 0;
         return (
@@ -303,9 +308,8 @@ const TripDashboard = ({
                 <div className="forecast-section-label">Weather window for the next 7 days</div>
                 {forecasts.length > 0 ? (
                   <div className="forecast-grid">
-                    {forecasts.map((fd, index) => {
+                    {forecasts.map((fd) => {
                       const goodDays = fd.totalDays - fd.stormyCount;
-                      const dayIndex = Math.min(index, Math.max(0, tripDayCount - 1));
                       return (
                         <div
                           key={fd.startDate}
@@ -314,13 +318,13 @@ const TripDashboard = ({
                           tabIndex={0}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onOpenWeatherDetail(trip, dayIndex);
+                            onOpenWeatherDetail(trip, fd.startDate);
                           }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
                               e.stopPropagation();
-                              onOpenWeatherDetail(trip, dayIndex);
+                              onOpenWeatherDetail(trip, fd.startDate);
                             }
                           }}
                         >
@@ -772,9 +776,10 @@ function App() {
   const fetchWeather = async () => {
     if (!currentTrip) return;
     const isCacheValid = currentTrip.lastWeatherUpdate && (Date.now() - currentTrip.lastWeatherUpdate < 3600000);
-    
+
     if (isCacheValid && currentTrip.weatherData && Object.keys(currentTrip.weatherData).length > 0) {
-      setWeatherRows(Object.values(currentTrip.weatherData).sort((a,b) => a.dayIndex - b.dayIndex));
+      setWeatherRows(Object.values(currentTrip.weatherData).sort((a, b) => a.dayIndex - b.dayIndex));
+      setWeatherError(null);
       return;
     }
 
@@ -789,9 +794,17 @@ function App() {
       return;
     }
 
-    // Otherwise, refresh (triggering refresh for all is fine for now, or I can just refresh this one)
-    // Let's trigger a full refresh to be safe and consistent.
-    await refreshAllWeather(true);
+    const refreshedTrips = await refreshAllWeather(true);
+    const refreshedTrip = refreshedTrips.find(trip => trip.id === currentTrip.id);
+    if (refreshedTrip?.weatherData) {
+      const rows = Object.values(refreshedTrip.weatherData).sort((a, b) => a.dayIndex - b.dayIndex);
+      const hasAvailableData = rows.some((row) => row.summary !== 'Forecast unavailable for this date' && row.summary !== 'Weather service unavailable');
+      setWeatherRows(rows);
+      setWeatherError(hasAvailableData ? null : 'Weather forecasts are not available yet for these trip dates.');
+    } else {
+      setWeatherRows([]);
+      setWeatherError('Weather could not be loaded for this trip.');
+    }
   };
 
   useEffect(() => {
@@ -800,17 +813,10 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, currentTrip?.startDate, currentTrip?.days?.length, currentTrip?.days?.map(day => day.location).join('|'), currentTrip?.lastWeatherUpdate]);
 
-  const openWeatherDetail = async (trip: Trip, dayIndex: number) => {
-    const day = trip.days?.[dayIndex];
-    const date = trip.startDate ? getDayDate(trip.startDate, dayIndex) : '';
-    const cachedRow = trip.weatherData?.[dayIndex];
-
-    if (cachedRow) {
-      setSelectedWeatherDetail({ isOpen: true, trip, row: cachedRow, day });
-      return;
-    }
-
-    const row = await fetchWeatherForDay(dayIndex, day?.location || '', date);
+  const openWeatherDetail = async (trip: Trip, forecastDate: string) => {
+    const day = trip.days?.find((candidate) => candidate.location?.trim()) || trip.days?.[0];
+    const location = day?.location || '';
+    const row = await fetchWeatherForDay(0, location, forecastDate);
     setSelectedWeatherDetail({ isOpen: true, trip, row, day });
   };
 
@@ -1027,10 +1033,6 @@ function App() {
         const day = trip.days[i];
         const date = getDayDate(trip.startDate, i);
 
-        if (!isDateWithinForecastRange(date)) {
-          continue;
-        }
-
         try {
           const weather = await fetchWeatherForDay(i, day.location, date);
 
@@ -1039,19 +1041,24 @@ function App() {
           }
 
           weatherData[i] = weather;
-          dayCount++;
-          if (isStormyWeatherCode(weather.weatherCode)) {
-            stormyCount++;
+          if (weather.summary !== 'Forecast unavailable for this date' && weather.summary !== 'Weather service unavailable') {
+            dayCount++;
+            if (isStormyWeatherCode(weather.weatherCode)) {
+              stormyCount++;
+            }
           }
         } catch (err) {
           return { ...trip, weatherStatus: 'Pending' as const, weatherData: {}, lastWeatherUpdate: Date.now() };
         }
       }
 
-      let status: 'Good' | 'Mild' | 'Bad' = 'Good';
-      if (stormyCount === 0) {
+      let status: 'Good' | 'Mild' | 'Bad' | 'Pending' | 'Too Far in the Future' = 'Good';
+      const availableRows = Object.values(weatherData).filter((row) => row.summary !== 'Forecast unavailable for this date' && row.summary !== 'Weather service unavailable');
+      if (availableRows.length === 0) {
+        status = 'Too Far in the Future';
+      } else if (stormyCount === 0) {
         status = 'Good';
-      } else if (stormyCount === dayCount) {
+      } else if (stormyCount === availableRows.length) {
         status = 'Bad';
       } else {
         status = 'Mild';
@@ -1075,6 +1082,7 @@ function App() {
     }
     console.log('Dashboard load: forecast refresh completed for', Object.keys(newForecasts).length, 'trip(s).');
     setForecastData(newForecasts);
+    return updatedTrips;
   };
 
   useEffect(() => {

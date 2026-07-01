@@ -1047,6 +1047,14 @@ select {
   word-wrap: break-word;
 }
 
+.weather-unavailable-message {
+  margin: 0.5rem 0 0 0;
+  color: #6b7280;
+  font-size: 0.92rem;
+  font-weight: 600;
+  word-wrap: break-word;
+}
+
 .weather-card-details {
   display: grid;
   grid-template-columns: 1fr 1fr;
