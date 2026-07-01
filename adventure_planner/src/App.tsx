@@ -112,10 +112,13 @@ const likelihoodClass = (pct: number): string => {
   return 'bad';
 };
 
-const formatShortDate = (dateStr: string): string => {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const d = new Date(year, month - 1, day);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const formatForecastStartLabel = (startDate: string): string => {
+  const today = new Date(getTodayString());
+  const target = new Date(`${startDate}T00:00:00Z`);
+  const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  return `${diffDays} days`;
 };
 
 const TripDashboard = ({
@@ -148,42 +151,51 @@ const TripDashboard = ({
         else if (weatherStatus === 'Mild') statusColor = '#f59e0b';
         else if (weatherStatus === 'Bad') statusColor = '#ef4444';
         const forecasts = forecastData[trip.id] || [];
+        const tripDayCount = trip.days?.length ?? 0;
         return (
           <div key={trip.id} className="trip-card" onClick={() => onViewTrip(trip.id)}>
-            <div className="trip-card-header">
-              <h2>{trip.name}</h2>
-              <span className="weather-status-badge" style={{ background: statusColor }}>
-                {weatherStatus}
-              </span>
-            </div>
-            <div className="trip-card-meta">
-              <span>📅 {getTripDateRange(trip.startDate, stats.dayCount)}</span>
-              <span>🏔️ {getTripActivitySummary(trip)}</span>
-            </div>
-            <div className="trip-card-stats">
-              <span>{stats.mileageRange}</span>
-              <span>{stats.elevationRange}</span>
-            </div>
-            {forecasts.length > 0 && (
-              <div className="forecast-section" onClick={(e) => e.stopPropagation()}>
-                <div className="forecast-section-label">7-Day Start Likelihood ({trip.days?.length ?? 0}-day trip)</div>
-                <div className="forecast-grid">
-                  {forecasts.map((fd) => (
-                    <div key={fd.startDate} className={`forecast-card likelihood-${likelihoodClass(fd.likelihood)}`}>
-                      <div className="forecast-date">{formatShortDate(fd.startDate)}</div>
-                      <div className="forecast-likelihood-pct">{fd.likelihood}%</div>
-                      <div className="forecast-days-icons">
-                        {fd.days.map((d, idx) => (
-                          <span key={idx} className="forecast-day-icon" title={`Day ${idx + 1}: ${d.summary}`}>
-                            {weatherCodeEmoji(d.weatherCode)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+            <div className="trip-card-main">
+              <div className="trip-card-overview">
+                <div className="trip-card-header">
+                  <h2>{trip.name}</h2>
+                  <span className="weather-status-badge" style={{ background: statusColor }}>
+                    {weatherStatus}
+                  </span>
+                </div>
+                <div className="trip-card-meta">
+                  <span>📅 {getTripDateRange(trip.startDate, stats.dayCount)}</span>
+                  <span>🏔️ {getTripActivitySummary(trip)}</span>
+                </div>
+                <div className="trip-card-stats">
+                  <span>{stats.mileageRange}</span>
+                  <span>{stats.elevationRange}</span>
                 </div>
               </div>
-            )}
+              {forecasts.length > 0 && (
+                <div className="forecast-section" onClick={(e) => e.stopPropagation()}>
+                  <div className="forecast-section-label">Weather window for the next 7 days</div>
+                  <div className="forecast-grid">
+                    {forecasts.map((fd) => {
+                      const goodDays = fd.totalDays - fd.stormyCount;
+                      return (
+                        <div key={fd.startDate} className={`forecast-card likelihood-${likelihoodClass(fd.likelihood)}`}>
+                          <div className="forecast-date">{formatForecastStartLabel(fd.startDate)}</div>
+                          <div className="forecast-likelihood-pct">{fd.likelihood}%</div>
+                          <div className="forecast-window-summary">{goodDays}/{tripDayCount} good days</div>
+                          <div className="forecast-days-icons">
+                            {fd.days.map((d, idx) => (
+                              <span key={idx} className="forecast-day-icon" title={`Day ${idx + 1}: ${d.summary}`}>
+                                {weatherCodeEmoji(d.weatherCode)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         );
       })}

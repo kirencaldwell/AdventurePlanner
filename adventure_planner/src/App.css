@@ -1190,6 +1190,20 @@ select {
   transition: transform 0.1s;
 }
 
+.trip-card-main {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.6fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.trip-card-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
 .trip-card:hover {
   transform: translateY(-2px);
   border-color: var(--accent-color);
@@ -1270,9 +1284,9 @@ select {
 
 /* ─── Forecast Section ──────────────────────────────────── */
 .forecast-section {
-  margin-top: 1rem;
-  border-top: 1px solid rgba(0,0,0,0.07);
-  padding-top: 0.85rem;
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
 }
 
 .forecast-section-label {
@@ -1287,7 +1301,7 @@ select {
 /* ─── Forecast Grid ─────────────────────────────────────── */
 .forecast-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(70px, 1fr));
   gap: 0.4rem;
 }
 
@@ -1335,6 +1349,14 @@ select {
   color: #6b7280;
   text-align: center;
   white-space: nowrap;
+}
+
+.forecast-window-summary {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .forecast-likelihood-pct {
@@ -1399,15 +1421,21 @@ select {
 }
 
 /* ─── Responsive ────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .trip-card-main {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 640px) {
   .forecast-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(70px, 1fr));
   }
 }
 
 @media (max-width: 420px) {
   .forecast-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(70px, 1fr));
   }
 }
 
