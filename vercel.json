@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "adventure_planner/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "adventure_planner/dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/assets/(.*)",
+      "dest": "/adventure_planner/dist/assets/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/adventure_planner/dist/index.html"
+    }
+  ]
+}

@@ -171,9 +171,9 @@ const TripDashboard = ({
                   <span>{stats.elevationRange}</span>
                 </div>
               </div>
-              {forecasts.length > 0 && (
-                <div className="forecast-section" onClick={(e) => e.stopPropagation()}>
-                  <div className="forecast-section-label">Weather window for the next 7 days</div>
+              <div className="forecast-section" onClick={(e) => e.stopPropagation()}>
+                <div className="forecast-section-label">Weather window for the next 7 days</div>
+                {forecasts.length > 0 ? (
                   <div className="forecast-grid">
                     {forecasts.map((fd) => {
                       const goodDays = fd.totalDays - fd.stormyCount;
@@ -193,8 +193,10 @@ const TripDashboard = ({
                       );
                     })}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="forecast-empty-state">Loading weather windows…</div>
+                )}
+              </div>
             </div>
           </div>
         );
@@ -211,6 +213,7 @@ function App() {
   const [view, setView] = useState<'dashboard' | 'trip-detail'>('dashboard');
   const [activeTab, setActiveTab] = useState<string>('trip');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [hasForcedDashboard, setHasForcedDashboard] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
 
@@ -254,6 +257,14 @@ function App() {
       return;
     }
 
+    if (!hasForcedDashboard) {
+      console.log('Dashboard bootstrap: forcing dashboard view after auth');
+      setHasForcedDashboard(true);
+      setCurrentTripId(null);
+      setView('dashboard');
+      setActiveTab('trip');
+    }
+
     const loadTrips = async () => {
       console.log('Attempting to load trips for user:', user.id);
       try {
@@ -289,8 +300,9 @@ function App() {
           setTrips(mappedTrips);
           
           if (!currentTripId) {
-            setCurrentTripId(mappedTrips[0].id);
+            setCurrentTripId(null);
           }
+          setView('dashboard');
         } else {
           console.log('Dashboard load: no trips found; staying on dashboard.');
           setTrips([]);
