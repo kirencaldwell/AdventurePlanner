@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import type { Trip, StatusId, TripActivity } from './types';
+import type { Trip, StatusId, TripActivity, TripDay } from './types';
 import type { StartingDayForecast } from './weatherUtils';
 import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate, isDateWithinForecastRange } from './weatherUtils';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
@@ -121,18 +121,146 @@ const formatForecastStartLabel = (startDate: string): string => {
   return `${diffDays} days`;
 };
 
+const WeatherDayCard = ({
+  row,
+  day,
+  editable = false,
+  onNotesChange,
+  onLinksChange,
+}: {
+  row: WeatherRow;
+  day?: TripDay;
+  editable?: boolean;
+  onNotesChange?: (value: string) => void;
+  onLinksChange?: (value: string) => void;
+}) => (
+  <div className="weather-card">
+    <div className="weather-card-header">
+      <div className="weather-card-title">
+        <h3>Day {row.dayIndex + 1} - {row.date}</h3>
+        <p className="weather-location">{row.location || 'Missing coordinates'}</p>
+        <p className="weather-summary">{row.summary}</p>
+      </div>
+    </div>
+
+    <div className="weather-card-details">
+      <div className="weather-detail-row">
+        <span className="detail-label">Sea Level:</span>
+        <span className="detail-value">{row.highLow[0]?.high} / {row.highLow[0]?.low}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">3,000ft:</span>
+        <span className="detail-value">{row.highLow[3000]?.high} / {row.highLow[3000]?.low}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">6,000ft:</span>
+        <span className="detail-value">{row.highLow[6000]?.high} / {row.highLow[6000]?.low}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">10,000ft:</span>
+        <span className="detail-value">{row.highLow[10000]?.high} / {row.highLow[10000]?.low}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Cloud Cover:</span>
+        <span className="detail-value">{row.cloudCover ?? '-'}%</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Wind:</span>
+        <span className="detail-value">{formatWind(row.wind)}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Wind Gust:</span>
+        <span className="detail-value">{formatWind(row.windGust)}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Visibility:</span>
+        <span className="detail-value">{formatVisibility(row.visibility)}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Humidity:</span>
+        <span className="detail-value">{row.humidity ?? '-'}%</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Freezing Level:</span>
+        <span className="detail-value">{formatElevation(row.freezingLevel)}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Snow Depth:</span>
+        <span className="detail-value">{formatSnow(row.snowDepth)}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Precipitation:</span>
+        <span className="detail-value">{formatPrecip(row.precipitation)}</span>
+      </div>
+      <div className="weather-detail-row">
+        <span className="detail-label">Snowfall:</span>
+        <span className="detail-value">{formatSnow(row.snowfall)}</span>
+      </div>
+    </div>
+
+    {editable && day && (
+      <>
+        <div className="weather-card-notes">
+          <label htmlFor={`notes-day-${row.dayIndex}`}>Notes</label>
+          <textarea
+            id={`notes-day-${row.dayIndex}`}
+            className="weather-notes-input"
+            placeholder="Add your own notes for this day..."
+            value={day.notes || ''}
+            onChange={(e) => onNotesChange?.(e.target.value)}
+          />
+        </div>
+
+        <div className="weather-card-links">
+          <label htmlFor={`weather-links-day-${row.dayIndex}`}>Additional Weather Sources</label>
+          <textarea
+            id={`weather-links-day-${row.dayIndex}`}
+            className="weather-links-input"
+            placeholder="Paste extra weather links here (one per line)"
+            value={day.weatherLinks || ''}
+            onChange={(e) => onLinksChange?.(e.target.value)}
+          />
+          <div className="weather-links-display">
+            {day.weatherLinks && day.weatherLinks
+              .split(/\n+/)
+              .map(link => link.trim())
+              .filter(Boolean)
+              .map(link => {
+                const isSafeProtocol = link.toLowerCase().startsWith('http://') || link.toLowerCase().startsWith('https://');
+                if (!isSafeProtocol) {
+                  return (
+                    <span key={link} className="weather-link invalid" title="Only http/https links are allowed">
+                      ⚠️ Invalid Link: {link.substring(0, 30)}...
+                    </span>
+                  );
+                }
+                return (
+                  <a key={link} href={link} target="_blank" rel="noreferrer" className="weather-link">
+                    {link}
+                  </a>
+                );
+              })}
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+);
+
 const TripDashboard = ({
   trips,
   onViewTrip,
   onNewTrip,
   onRefreshAllWeather,
   forecastData,
+  onOpenWeatherDetail,
 }: {
   trips: Trip[];
   onViewTrip: (id: string) => void;
   onNewTrip: () => void;
   onRefreshAllWeather: () => void;
   forecastData: Record<string, StartingDayForecast[]>;
+  onOpenWeatherDetail: (trip: Trip, dayIndex: number) => void;
 }) => (
   <div className="dashboard-container">
     <header className="dashboard-header">
@@ -175,10 +303,27 @@ const TripDashboard = ({
                 <div className="forecast-section-label">Weather window for the next 7 days</div>
                 {forecasts.length > 0 ? (
                   <div className="forecast-grid">
-                    {forecasts.map((fd) => {
+                    {forecasts.map((fd, index) => {
                       const goodDays = fd.totalDays - fd.stormyCount;
+                      const dayIndex = Math.min(index, Math.max(0, tripDayCount - 1));
                       return (
-                        <div key={fd.startDate} className={`forecast-card likelihood-${likelihoodClass(fd.likelihood)}`}>
+                        <div
+                          key={fd.startDate}
+                          className={`forecast-card likelihood-${likelihoodClass(fd.likelihood)}`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenWeatherDetail(trip, dayIndex);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onOpenWeatherDetail(trip, dayIndex);
+                            }
+                          }}
+                        >
                           <div className="forecast-date">{formatForecastStartLabel(fd.startDate)}</div>
                           <div className="forecast-likelihood-pct">{fd.likelihood}%</div>
                           <div className="forecast-window-summary">{goodDays}/{tripDayCount} good days</div>
@@ -224,6 +369,7 @@ function App() {
   const [caltopoUrlError, setCaltopoUrlError] = useState<string | null>(null);
   const [weatherRows, setWeatherRows] = useState<WeatherRow[]>([]);
   const [weatherError, setWeatherError] = useState<string | null>(null);
+  const [selectedWeatherDetail, setSelectedWeatherDetail] = useState<{ isOpen: boolean; trip: Trip | null; row: WeatherRow | null; day?: TripDay }>({ isOpen: false, trip: null, row: null });
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
 
@@ -654,6 +800,24 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, currentTrip?.startDate, currentTrip?.days?.length, currentTrip?.days?.map(day => day.location).join('|'), currentTrip?.lastWeatherUpdate]);
 
+  const openWeatherDetail = async (trip: Trip, dayIndex: number) => {
+    const day = trip.days?.[dayIndex];
+    const date = trip.startDate ? getDayDate(trip.startDate, dayIndex) : '';
+    const cachedRow = trip.weatherData?.[dayIndex];
+
+    if (cachedRow) {
+      setSelectedWeatherDetail({ isOpen: true, trip, row: cachedRow, day });
+      return;
+    }
+
+    const row = await fetchWeatherForDay(dayIndex, day?.location || '', date);
+    setSelectedWeatherDetail({ isOpen: true, trip, row, day });
+  };
+
+  const closeWeatherDetail = () => {
+    setSelectedWeatherDetail({ isOpen: false, trip: null, row: null });
+  };
+
   const updateStatus = (categoryId: string, itemId: string, personId: string, statusId: StatusId) => {
     updateCurrentTrip(trip => ({
       ...trip,
@@ -944,7 +1108,30 @@ function App() {
   }
 
   if (view === 'dashboard') {
-    return <TripDashboard trips={trips} onViewTrip={(id) => { setCurrentTripId(id); setView('trip-detail'); }} onNewTrip={() => createNewTrip('New Trip')} onRefreshAllWeather={refreshAllWeather} forecastData={forecastData} />;
+    return (
+      <>
+        <TripDashboard
+          trips={trips}
+          onViewTrip={(id) => { setCurrentTripId(id); setView('trip-detail'); }}
+          onNewTrip={() => createNewTrip('New Trip')}
+          onRefreshAllWeather={refreshAllWeather}
+          forecastData={forecastData}
+          onOpenWeatherDetail={openWeatherDetail}
+        />
+        {selectedWeatherDetail.isOpen && selectedWeatherDetail.row && (
+          <div className="weather-detail-modal-backdrop" onClick={closeWeatherDetail}>
+            <div className="weather-detail-modal" onClick={(e) => e.stopPropagation()}>
+              <button type="button" className="weather-detail-close-btn" onClick={closeWeatherDetail} aria-label="Close weather details">×</button>
+              <div className="weather-detail-header">
+                <p className="weather-detail-trip-name">{selectedWeatherDetail.trip?.name || 'Trip weather'}</p>
+                <h3>Weather details for {selectedWeatherDetail.row.date}</h3>
+              </div>
+              <WeatherDayCard row={selectedWeatherDetail.row} day={selectedWeatherDetail.day} />
+            </div>
+          </div>
+        )}
+      </>
+    );
   }
 
   if (!currentTrip) {
@@ -1208,142 +1395,32 @@ function App() {
                 {weatherRows.map(row => {
                   const day = currentTrip.days?.[row.dayIndex];
                   return (
-                    <div key={row.dayIndex} className="weather-card">
-                      <div className="weather-card-header">
-                        <div className="weather-card-title">
-                          <h3>Day {row.dayIndex + 1} - {row.date}</h3>
-                          <p className="weather-location">{row.location || 'Missing coordinates'}</p>
-                          <p className="weather-summary">{row.summary}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="weather-card-details">
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Sea Level:</span>
-                          <span className="detail-value">{row.highLow[0]?.high} / {row.highLow[0]?.low}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">3,000ft:</span>
-                          <span className="detail-value">{row.highLow[3000]?.high} / {row.highLow[3000]?.low}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">6,000ft:</span>
-                          <span className="detail-value">{row.highLow[6000]?.high} / {row.highLow[6000]?.low}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">10,000ft:</span>
-                          <span className="detail-value">{row.highLow[10000]?.high} / {row.highLow[10000]?.low}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Cloud Cover:</span>
-                          <span className="detail-value">{row.cloudCover ?? '-'}%</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Wind:</span>
-                          <span className="detail-value">{formatWind(row.wind)}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Wind Gust:</span>
-                          <span className="detail-value">{formatWind(row.windGust)}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Visibility:</span>
-                          <span className="detail-value">{formatVisibility(row.visibility)}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Humidity:</span>
-                          <span className="detail-value">{row.humidity ?? '-'}%</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Freezing Level:</span>
-                          <span className="detail-value">{formatElevation(row.freezingLevel)}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Snow Depth:</span>
-                          <span className="detail-value">{formatSnow(row.snowDepth)}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Precipitation:</span>
-                          <span className="detail-value">{formatPrecip(row.precipitation)}</span>
-                        </div>
-                        <div className="weather-detail-row">
-                          <span className="detail-label">Snowfall:</span>
-                          <span className="detail-value">{formatSnow(row.snowfall)}</span>
-                        </div>
-                      </div>
-
-                      {day && (
-                        <>
-                          <div className="weather-card-notes">
-                            <label htmlFor={`notes-day-${row.dayIndex}`}>Notes</label>
-                            <textarea
-                              id={`notes-day-${row.dayIndex}`}
-                              className="weather-notes-input"
-                              placeholder="Add your own notes for this day..."
-                              value={day.notes || ''}
-                              onChange={(e) => {
-                                updateCurrentTrip(trip => {
-                                  const days = [...(trip.days || [])];
-                                  days[row.dayIndex] = {
-                                    ...days[row.dayIndex],
-                                    notes: e.target.value
-                                  };
-                                  return { ...trip, days, lastModified: Date.now() };
-                                });
-                              }}
-                            />
-                          </div>
-
-                          <div className="weather-card-links">
-                            <label htmlFor={`weather-links-day-${row.dayIndex}`}>Additional Weather Sources</label>
-                            <textarea
-                              id={`weather-links-day-${row.dayIndex}`}
-                              className="weather-links-input"
-                              placeholder="Paste extra weather links here (one per line)"
-                              value={day.weatherLinks || ''}
-                              onChange={(e) => {
-                                updateCurrentTrip(trip => {
-                                  const days = [...(trip.days || [])];
-                                  days[row.dayIndex] = {
-                                    ...days[row.dayIndex],
-                                    weatherLinks: e.target.value
-                                  };
-                                  return { ...trip, days, lastModified: Date.now() };
-                                });
-                              }}
-                            />
-                              <div className="weather-links-display">
-                                {day.weatherLinks && day.weatherLinks
-                                  .split(/\n+/)
-                                  .map(link => link.trim())
-                                  .filter(Boolean)
-                                  .map(link => {
-                                    // Security: Only allow http/https protocols to prevent XSS (e.g. javascript:alert)
-                                    const isSafeProtocol = link.toLowerCase().startsWith('http://') || link.toLowerCase().startsWith('https://');
-                                    if (!isSafeProtocol) {
-                                      return (
-                                        <span key={link} className="weather-link invalid" title="Only http/https links are allowed">
-                                          ⚠️ Invalid Link: {link.substring(0, 30)}...
-                                        </span>
-                                      );
-                                    }
-                                    return (
-                                      <a
-                                        key={link}
-                                        href={link}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="weather-link"
-                                      >
-                                        {link}
-                                      </a>
-                                    );
-                                  })}
-                              </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    <WeatherDayCard
+                      key={row.dayIndex}
+                      row={row}
+                      day={day}
+                      editable
+                      onNotesChange={(value) => {
+                        updateCurrentTrip(trip => {
+                          const days = [...(trip.days || [])];
+                          days[row.dayIndex] = {
+                            ...days[row.dayIndex],
+                            notes: value
+                          };
+                          return { ...trip, days, lastModified: Date.now() };
+                        });
+                      }}
+                      onLinksChange={(value) => {
+                        updateCurrentTrip(trip => {
+                          const days = [...(trip.days || [])];
+                          days[row.dayIndex] = {
+                            ...days[row.dayIndex],
+                            weatherLinks: value
+                          };
+                          return { ...trip, days, lastModified: Date.now() };
+                        });
+                      }}
+                    />
                   );
                 })}
               </div>
