@@ -271,6 +271,7 @@ function App() {
         console.log('Trips data received:', data);
 
         if (Array.isArray(data) && data.length > 0) {
+          console.log('Dashboard load: found trips', data.length);
           const mappedTrips: Trip[] = data.map(row => ({
             id: row.id,
             name: row.name,
@@ -291,7 +292,7 @@ function App() {
             setCurrentTripId(mappedTrips[0].id);
           }
         } else {
-          console.log('No trips found; staying on the dashboard.');
+          console.log('Dashboard load: no trips found; staying on dashboard.');
           setTrips([]);
           setCurrentTripId(null);
           setView('dashboard');
@@ -896,12 +897,17 @@ function App() {
         }
       }
     }
+    console.log('Dashboard load: forecast refresh completed for', Object.keys(newForecasts).length, 'trip(s).');
     setForecastData(newForecasts);
   };
 
   useEffect(() => {
     if (!user || isInitialLoad || view !== 'dashboard' || trips.length === 0) return;
-    if (Object.keys(forecastData).length > 0) return;
+    if (Object.keys(forecastData).length > 0) {
+      console.log('Dashboard load: forecast data already available for', Object.keys(forecastData).length, 'trip(s).');
+      return;
+    }
+    console.log('Dashboard load: requesting forecast data for dashboard view.');
     void refreshAllWeather(false);
   }, [user, isInitialLoad, view, trips.length, forecastData]);
 
