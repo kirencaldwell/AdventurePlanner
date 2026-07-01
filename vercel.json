@@ -1,22 +1,17 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "adventure_planner/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "adventure_planner/dist"
-      }
-    }
+  "framework": "vite",
+  "buildCommand": "cd adventure_planner && npm ci && npm run build",
+  "outputDirectory": "adventure_planner/dist",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
-  "routes": [
+  "headers": [
     {
-      "src": "/assets/(.*)",
-      "dest": "/adventure_planner/dist/assets/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/adventure_planner/dist/index.html"
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
+      ]
     }
   ]
 }
