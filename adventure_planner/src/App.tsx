@@ -159,7 +159,7 @@ const WeatherDayCard = ({
     <div className="weather-card-header">
       <div className="weather-card-title">
         <h3>Day {row.dayIndex + 1} - {row.date}</h3>
-        <p className="weather-location">{row.location || 'Missing coordinates'}</p>
+        <p className="weather-location">{row.location || 'Missing location'}</p>
         {row.summary === 'Forecast unavailable for this date' || row.summary === 'Weather service unavailable' ? (
           <p className="weather-unavailable-message">Forecast not available yet for this trip date.</p>
         ) : (
@@ -831,7 +831,7 @@ function App() {
     }
     if (!currentTrip.days || currentTrip.days.length === 0) {
       setWeatherRows([]);
-      setWeatherError('Add at least one trip day with coordinates to view weather.');
+      setWeatherError('Add at least one trip day with a location to view weather.');
       return;
     }
 
@@ -1529,7 +1529,7 @@ function App() {
               { (currentTrip.days || []).length === 0 ? (
                 <div className="weather-placeholder">
                   <h2>No Days Added</h2>
-                  <p>Add days for your itinerary and enter coordinates for each location.</p>
+                  <p>Add days for your itinerary and enter a location for each day.</p>
                 </div>
               ) : (
                 <div className="day-list">
@@ -1556,11 +1556,11 @@ function App() {
                       <div className="day-content">
                         <div className="day-inputs">
                           <label className="day-field">
-                            <span className="day-field-label">Coordinates</span>
+                            <span className="day-field-label">Location</span>
                             <input
                               type="text"
                               className="day-location-input"
-                              placeholder="Enter coordinates, e.g. 40.1234, -105.1234"
+                              placeholder="Enter a location or coordinates, e.g. Boulder, CO or 40.1234, -105.1234"
                               value={day.location}
                               onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
                               onKeyDown={(e) => {
@@ -1800,7 +1800,7 @@ function App() {
               {tripDays.map((day, index) => (
                 <div key={day.id} className="print-day-card">
                   <h3>Day {index + 1}</h3>
-                  <p><strong>Location:</strong> {day.location || 'No coordinates'}</p>
+                  <p><strong>Location:</strong> {day.location || 'No location'}</p>
                   {day.description && <p><strong>Description:</strong> {day.description}</p>}
                   {(day.activities || []).length > 0 && (
                     <div>
@@ -1844,7 +1844,7 @@ function App() {
             weatherRows.map(row => (
               <div key={row.dayIndex} className="print-day-card">
                 <h3>{row.date}</h3>
-                <p>{row.location || 'Missing coordinates'}</p>
+                <p>{row.location || 'Missing location'}</p>
                 <p>{row.summary}</p>
                 <p>Sea Level: {row.highLow[0]?.high} / {row.highLow[0]?.low}</p>
                 <p>3,000 ft: {row.highLow[3000]?.high} / {row.highLow[3000]?.low}</p>
