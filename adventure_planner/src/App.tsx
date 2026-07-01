@@ -208,7 +208,7 @@ function App() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [currentTripId, setCurrentTripId] = useState<string | null>(null);
-  const [view, setView] = useState<'dashboard' | 'trip-detail'>('trip-detail');
+  const [view, setView] = useState<'dashboard' | 'trip-detail'>('dashboard');
   const [activeTab, setActiveTab] = useState<string>('trip');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
