@@ -291,8 +291,10 @@ function App() {
             setCurrentTripId(mappedTrips[0].id);
           }
         } else {
-          console.log('No trips found, creating a new one...');
-          createNewTrip('My First Adventure', user.id);
+          console.log('No trips found; staying on the dashboard.');
+          setTrips([]);
+          setCurrentTripId(null);
+          setView('dashboard');
         }
       } catch (err: any) {
         console.error('Failed to load trips from Supabase:', err);
@@ -896,6 +898,12 @@ function App() {
     }
     setForecastData(newForecasts);
   };
+
+  useEffect(() => {
+    if (!user || isInitialLoad || view !== 'dashboard' || trips.length === 0) return;
+    if (Object.keys(forecastData).length > 0) return;
+    void refreshAllWeather(false);
+  }, [user, isInitialLoad, view, trips.length, forecastData]);
 
   if (isInitialLoad) {
     return (
