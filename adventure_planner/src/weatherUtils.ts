@@ -86,6 +86,19 @@ export const parseCoordinates = (value: string) => {
   return { latitude, longitude };
 };
 
+const normalizeDateString = (value: string) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : trimmed;
+};
+
+const toUtcDateOnly = (value: string) => {
+  const normalized = normalizeDateString(value);
+  if (!normalized) return new Date('1970-01-01T00:00:00Z');
+  return new Date(`${normalized}T00:00:00Z`);
+};
+
 export const getDayDate = (startDate: string, offset: number) => {
   const date = new Date(startDate);
   date.setUTCDate(date.getUTCDate() + offset);
@@ -93,10 +106,16 @@ export const getDayDate = (startDate: string, offset: number) => {
 };
 
 export const isDateWithinForecastRange = (dateStr: string) => {
-  const target = new Date(dateStr);
-  const now = new Date(getTodayString());
-  const diffDays = (target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  const target = toUtcDateOnly(dateStr);
+  const now = toUtcDateOnly(getTodayString());
+  const diffDays = Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   return diffDays >= -90 && diffDays <= 16;
+};
+
+const buildWeatherForecastUrl = (coords: { latitude: number; longitude: number }, startDate: string, endDate: string) => {
+  const safeStart = normalizeDateString(startDate);
+  const safeEnd = normalizeDateString(endDate);
+  return `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
 };
 
 export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
@@ -132,7 +151,7 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     };
   }
 
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,windspeed_10m_max,windgusts_10m_max,precipitation_sum,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${date}&end_date=${date}`;  
+  const url = buildWeatherForecastUrl(coords, date, date);
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Weather lookup failed');
@@ -241,7 +260,7 @@ export const fetchWeatherForLocationAndRange = async (
     }));
   }
 
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,windspeed_10m_max,windgusts_10m_max,precipitation_sum,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${startDate}&end_date=${endDate}`;
+  const url = buildWeatherForecastUrl(coords, startDate, endDate);
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Weather lookup failed');

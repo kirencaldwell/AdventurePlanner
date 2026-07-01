@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import './App.css';
 import type { Trip, StatusId, TripActivity } from './types';
 import type { StartingDayForecast } from './weatherUtils';
-import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
+import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate, isDateWithinForecastRange } from './weatherUtils';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
@@ -835,6 +835,11 @@ function App() {
       for (let i = 0; i < trip.days.length; i += 1) {
         const day = trip.days[i];
         const date = getDayDate(trip.startDate, i);
+
+        if (!isDateWithinForecastRange(date)) {
+          continue;
+        }
+
         try {
           const weather = await fetchWeatherForDay(i, day.location, date);
 
