@@ -53,7 +53,7 @@ export interface Trip {
   days?: TripDay[];
   caltopoUrl?: string;
   photosUrl?: string;
-  weatherStatus?: 'Good' | 'Mild' | 'Bad' | 'Pending';
+  weatherStatus?: 'Good' | 'Mild' | 'Bad' | 'Pending' | 'Too Far in the Future';
   weatherData?: Record<number, WeatherRow>; // dayIndex -> WeatherRow
   lastWeatherUpdate?: number; // timestamp
   debriefDiscussions?: string[];
