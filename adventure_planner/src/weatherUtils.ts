@@ -86,6 +86,53 @@ export const parseCoordinates = (value: string) => {
   return { latitude, longitude };
 };
 
+const geocodeLocationCache = new Map<string, Promise<{ latitude: number; longitude: number } | null>>();
+
+export const resolveLocationCoordinates = async (value: string) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  const directCoordinates = parseCoordinates(trimmed);
+  if (directCoordinates) return directCoordinates;
+
+  const cacheKey = trimmed.toLowerCase();
+  const cached = geocodeLocationCache.get(cacheKey);
+  if (cached) return cached;
+
+  const lookupPromise = (async () => {
+    const searchQuery = encodeURIComponent(trimmed);
+    const candidateUrls = [
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=0&q=${searchQuery}`,
+      `https://geocode.maps.co/search?q=${searchQuery}`,
+    ];
+
+    for (const url of candidateUrls) {
+      try {
+        const response = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!response.ok) continue;
+
+        const payload = await response.json();
+        const firstResult = Array.isArray(payload) ? payload[0] : payload?.features?.[0];
+        const lat = firstResult?.lat ?? firstResult?.geometry?.coordinates?.[1];
+        const lon = firstResult?.lon ?? firstResult?.geometry?.coordinates?.[0];
+        const latitude = Number(lat);
+        const longitude = Number(lon);
+
+        if (Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+          return { latitude, longitude };
+        }
+      } catch {
+        // Ignore geocoding failures and continue to the next provider.
+      }
+    }
+
+    return null;
+  })();
+
+  geocodeLocationCache.set(cacheKey, lookupPromise);
+  return lookupPromise;
+};
+
 const normalizeDateString = (value: string) => {
   const trimmed = value?.trim();
   if (!trimmed) return '';
@@ -126,20 +173,20 @@ const buildWeatherDataUrl = (coords: { latitude: number; longitude: number }, st
 };
 
 export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
-  const coords = parseCoordinates(dayLocation);
+  const coords = await resolveLocationCoordinates(dayLocation);
   if (!coords) {
     return {
       dayIndex,
       date,
       location: dayLocation,
-      summary: 'Invalid coordinates',
+      summary: 'Location could not be resolved',
       highLow: {
         0: { high: '-', low: '-' },
         3000: { high: '-', low: '-' },
         6000: { high: '-', low: '-' },
         10000: { high: '-', low: '-' },
       },
-      error: 'Coordinates must be in the format: lat, lon',
+      error: 'Enter a coordinate pair or a place name/address to look up weather.',
     };
   }
 
@@ -255,7 +302,7 @@ export const fetchWeatherForLocationAndRange = async (
   startDate: string,
   endDate: string
 ): Promise<{ date: string; weatherCode?: number; error?: string }[]> => {
-  const coords = parseCoordinates(location);
+  const coords = await resolveLocationCoordinates(location);
   
   // Calculate how many days are in this range to return appropriate dummy data if needed
   const start = new Date(startDate);
@@ -267,7 +314,7 @@ export const fetchWeatherForLocationAndRange = async (
     return Array.from({ length: diffDays }).map((_, idx) => ({
       date: getDayDate(startDate, idx),
       weatherCode: undefined,
-      error: 'Invalid coordinates',
+      error: 'Location could not be resolved',
     }));
   }
 
