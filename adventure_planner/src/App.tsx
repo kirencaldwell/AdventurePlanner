@@ -2015,13 +2015,13 @@ function App() {
       <Analytics />
       {/* Copy List Modal */}
       {copyListModalOpen && (
-        <div className="share-modal-overlay" onClick={() => setCopyListModalOpen(false)}>
-          <div className="share-modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="share-modal-header">
+        <div className="copy-modal-overlay" onClick={() => setCopyListModalOpen(false)}>
+          <div className="copy-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="copy-modal-header">
               <h2>Copy Packing List</h2>
-              <button className="share-modal-close" onClick={() => setCopyListModalOpen(false)}>×</button>
+              <button className="copy-modal-close" onClick={() => setCopyListModalOpen(false)}>×</button>
             </div>
-            <div className="share-modal-body">
+            <div className="copy-modal-body">
               <p>Select a trip to copy the current packing list into:</p>
               <select
                 value={copyListDestinationTripId}
