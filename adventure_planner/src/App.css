@@ -360,6 +360,73 @@ select {
 .tab-actions {
   display: flex;
   justify-content: flex-end;
+  padding-top: 1rem;
+  border-top: 1px solid #eef2f2;
+  margin-top: 0.5rem;
+}
+
+.tab-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.tab-bulk-set {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bulk-status-select {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--border-radius);
+  border: 1px solid #dfe6e9;
+  font-size: 0.9rem;
+  background: #fff;
+  color: #2c3e50;
+  cursor: pointer;
+}
+
+.bulk-status-apply-btn {
+  background: var(--accent-color);
+  color: white;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border-radius: var(--border-radius);
+  white-space: nowrap;
+}
+
+.bulk-status-apply-btn:disabled {
+  background: #b0bec5;
+  cursor: not-allowed;
+}
+
+.tab-reset-btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .tab-bulk-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .tab-bulk-set {
+    width: 100%;
+  }
+
+  .bulk-status-select {
+    flex: 1;
+  }
+
+  .tab-reset-btn {
+    width: 100%;
+    text-align: center;
+  }
 }
 
 .debrief-panel {

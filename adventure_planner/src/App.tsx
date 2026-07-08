@@ -401,6 +401,7 @@ function App() {
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
   const [copyListModalOpen, setCopyListModalOpen] = useState(false);
   const [copyListDestinationTripId, setCopyListDestinationTripId] = useState('');
+  const [bulkStatusValue, setBulkStatusValue] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -896,6 +897,27 @@ function App() {
       categories: trip.categories.map(cat => 
         cat.id === categoryId 
           ? { ...cat, items: cat.items.map(item => ({ ...item, personStatuses: {} })) }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const setAllTabStatus = (categoryId: string, statusId: string) => {
+    if (!currentTrip || !statusId) return;
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: cat.items.map(item => ({
+                ...item,
+                personStatuses: Object.fromEntries(
+                  trip.people.map(p => [p.id, statusId])
+                ),
+              })),
+            }
           : cat
       ),
       lastModified: Date.now(),
@@ -1858,7 +1880,33 @@ function App() {
             </div>
 
             <footer className="tab-actions">
-              <button onClick={() => resetTab(activeCategory.id)} className="danger">Reset Tab</button>
+              <div className="tab-bulk-actions">
+                <div className="tab-bulk-set">
+                  <select
+                    value={bulkStatusValue}
+                    onChange={e => setBulkStatusValue(e.target.value)}
+                    className="bulk-status-select"
+                  >
+                    <option value="">Set all to…</option>
+                    {DEFAULT_STATUSES.map(s => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="bulk-status-apply-btn"
+                    disabled={!bulkStatusValue}
+                    onClick={() => {
+                      setAllTabStatus(activeCategory.id, bulkStatusValue);
+                      setBulkStatusValue('');
+                    }}
+                  >
+                    Apply
+                  </button>
+                </div>
+                <button onClick={() => resetTab(activeCategory.id)} className="danger tab-reset-btn">
+                  Reset to Unpacked
+                </button>
+              </div>
             </footer>
           </div>
         ) : null}
