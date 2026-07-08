@@ -1550,3 +1550,56 @@ select {
   }
 }
 
+
+/* Copy List Feature Styles */
+.copy-tab-btn {
+  background: transparent;
+  color: var(--accent-color);
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  opacity: 0.8;
+  border: 1px solid currentColor;
+  border-radius: var(--border-radius);
+  margin-right: 0.5rem;
+}
+
+.copy-tab-btn:hover {
+  opacity: 1;
+  background: rgba(39, 174, 96, 0.1);
+  color: var(--accent-color);
+}
+
+.copy-list-select {
+  width: 100%;
+  padding: 0.75rem;
+  margin: 1rem 0;
+  border: 1px solid #ccc;
+  border-radius: var(--border-radius);
+  font-size: 1rem;
+}
+
+.copy-list-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.copy-list-cancel-btn {
+  background: #ecf0f1;
+  color: #333;
+}
+
+.copy-list-cancel-btn:hover {
+  background: #bdc3c7;
+}
+
+.copy-list-confirm-btn {
+  background: var(--accent-color);
+  color: white;
+}
+
+.copy-list-confirm-btn:disabled {
+  background: #95a5a6;
+  cursor: not-allowed;
+}
