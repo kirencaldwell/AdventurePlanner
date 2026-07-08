@@ -1230,7 +1230,15 @@ select {
 }
 
 .dashboard-header {
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.dashboard-header h1 {
+  font-size: 2rem;
+  color: #1f2937;
+  margin: 0;
 }
 
 .trip-list {
@@ -1242,10 +1250,11 @@ select {
 .trip-card {
   padding: 1.5rem;
   background: white;
-  border-radius: var(--border-radius);
-  border: 1px solid #e6eeee;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
   cursor: pointer;
-  transition: transform 0.1s;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .trip-card-main {
@@ -1265,6 +1274,7 @@ select {
 .trip-card:hover {
   transform: translateY(-2px);
   border-color: var(--accent-color);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
 }
 
 .trip-card h2 {
@@ -1294,16 +1304,34 @@ select {
 }
 
 .refresh-weather-btn {
-  background: #f0f0f0;
-  border: 1px solid #ddd;
+  background: white;
+  border: 1px solid #d1d5db;
   padding: 0.5rem 1rem;
   border-radius: var(--border-radius);
   cursor: pointer;
   font-size: 0.9rem;
+  color: #4b5563;
+  font-weight: 500;
+  transition: background 0.2s;
 }
 
 .refresh-weather-btn:hover {
-  background: #e0e0e0;
+  background: #f9fafb;
+}
+
+.new-trip-btn {
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.new-trip-btn:hover {
+  background: #219653;
 }
 
 .trip-card-meta {
@@ -1318,12 +1346,18 @@ select {
 .trip-card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .trip-card-header h2 {
   margin: 0;
+  line-height: 1.2;
+  color: #1f2937;
+  font-size: 1.35rem;
+}
+
+.trip-card-badges {
+  margin-bottom: 0.75rem;
 }
 
 .weather-status-badge {

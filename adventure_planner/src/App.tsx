@@ -312,6 +312,8 @@ const TripDashboard = ({
               <div className="trip-card-overview">
                 <div className="trip-card-header">
                   <h2>{trip.name}</h2>
+                </div>
+                <div className="trip-card-badges">
                   <span className="weather-status-badge" style={{ background: statusColor }}>
                     {weatherStatus}
                   </span>
