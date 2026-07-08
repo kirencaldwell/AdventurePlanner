@@ -7,6 +7,7 @@ import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
 import { ShareModal } from './ShareModal';
+import LocationMapPicker from './LocationMapPicker';
 import { Analytics } from "@vercel/analytics/react";
 import type { User } from '@supabase/supabase-js';
 
@@ -402,6 +403,7 @@ function App() {
   const [copyListModalOpen, setCopyListModalOpen] = useState(false);
   const [copyListDestinationTripId, setCopyListDestinationTripId] = useState('');
   const [bulkStatusValue, setBulkStatusValue] = useState('');
+  const [mapPickerDayId, setMapPickerDayId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1643,18 +1645,28 @@ function App() {
                         <div className="day-inputs">
                           <label className="day-field">
                             <span className="day-field-label">Location</span>
-                            <input
-                              type="text"
-                              className="day-location-input"
-                              placeholder="Enter a location or coordinates, e.g. Boulder, CO or 40.1234, -105.1234"
-                              value={day.location}
-                              onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  (e.target as HTMLInputElement).blur();
-                                }
-                              }}
-                            />
+                            <div className="day-location-row">
+                              <input
+                                type="text"
+                                className="day-location-input"
+                                placeholder="e.g. Boulder, CO or 40.1234, -105.1234"
+                                value={day.location}
+                                onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    (e.target as HTMLInputElement).blur();
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="map-picker-btn"
+                                title="Pick location on map"
+                                onClick={() => setMapPickerDayId(day.id)}
+                              >
+                                📍
+                              </button>
+                            </div>
                           </label>
                           <label className="day-field day-description-field">
                             <span className="day-field-label">Description</span>
@@ -2102,6 +2114,20 @@ function App() {
           </div>
         </div>
       )}
+
+      {mapPickerDayId && currentTrip && (() => {
+        const pickerDay = currentTrip.days?.find(d => d.id === mapPickerDayId);
+        return pickerDay ? (
+          <LocationMapPicker
+            currentLocation={pickerDay.location}
+            onConfirm={(coordStr) => {
+              updateTripDayLocation(mapPickerDayId, coordStr);
+              setMapPickerDayId(null);
+            }}
+            onClose={() => setMapPickerDayId(null)}
+          />
+        ) : null;
+      })()}
 
     </div>
   );
