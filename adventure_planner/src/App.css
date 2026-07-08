@@ -757,6 +757,7 @@ select {
   gap: 2rem;
   max-width: 1400px;
   margin: 0 auto;
+  width: 100%;
 }
 
 .weather-card {
@@ -1487,6 +1488,21 @@ select {
 
   .weather-cards-container {
     grid-template-columns: 1fr;
+    gap: 1rem;
+    /* Stretch to the edge of the screen on mobile */
+    margin-left: -1rem;
+    margin-right: -1rem;
+    width: calc(100% + 2rem);
+  }
+
+  .weather-card {
+    border-radius: 0;
+    padding: 1rem 1.25rem;
+  }
+
+  .weather-card-details {
+    /* Keep 2-col layout on mobile for compactness */
+    grid-template-columns: 1fr 1fr;
   }
 
   .day-row {
@@ -1538,9 +1554,7 @@ select {
     max-width: 100%;
   }
 
-  .weather-card-details {
-    grid-template-columns: 1fr;
-  }
+
 
   .debrief-header {
     flex-direction: column;
