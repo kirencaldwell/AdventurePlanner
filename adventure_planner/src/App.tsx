@@ -399,7 +399,8 @@ function App() {
   const [selectedWeatherDetail, setSelectedWeatherDetail] = useState<{ isOpen: boolean; trip: Trip | null; row: WeatherRow | null; day?: TripDay }>({ isOpen: false, trip: null, row: null });
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
-  const [packingListSourceTripId, setPackingListSourceTripId] = useState('');
+  const [copyListModalOpen, setCopyListModalOpen] = useState(false);
+  const [copyListDestinationTripId, setCopyListDestinationTripId] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -914,34 +915,24 @@ function App() {
     }));
   };
 
-  const copyPackingListFromTrip = () => {
-    if (!currentTrip) return;
-
-    const sourceTrip = trips.find(trip => trip.id === packingListSourceTripId);
-    if (!sourceTrip || sourceTrip.id === currentTrip.id) {
-      alert('Please choose a different trip to copy from.');
+  const copyCurrentTabToTrip = () => {
+    if (!currentTrip || !copyListDestinationTripId) return;
+    
+    const activeCategory = currentTrip.categories.find(c => c.id === activeTab);
+    if (!activeCategory || activeCategory.items.length === 0) {
+      alert('This packing list is empty.');
       return;
     }
 
-    const sourceCategories = sourceTrip.categories || [];
-    const hasItemsToCopy = sourceCategories.some(category => (category.items || []).length > 0);
-    if (!hasItemsToCopy) {
-      alert(`The selected trip "${sourceTrip.name}" does not have any packing items to copy.`);
-      return;
-    }
-
-    const copiedItemCount = sourceCategories.reduce((count, category) => count + (category.items || []).length, 0);
-
-    updateCurrentTrip(trip => {
-      const categories = [...(trip.categories || [])];
-
-      sourceCategories.forEach(sourceCategory => {
-        const existingCategory = categories.find(category => category.name === sourceCategory.name);
-        const sourceItems = sourceCategory.items || [];
-        const newItems = sourceItems.map(item => {
+    setTrips(prevTrips => prevTrips.map(trip => {
+      if (trip.id === copyListDestinationTripId) {
+        const categories = [...(trip.categories || [])];
+        const existingCategory = categories.find(c => c.name === activeCategory.name);
+        
+        const newItems = activeCategory.items.map(item => {
           const personStatuses: Record<string, string> = {};
           trip.people.forEach(person => {
-            const matchingSourcePerson = sourceTrip.people.find(sourcePerson =>
+            const matchingSourcePerson = currentTrip.people.find(sourcePerson =>
               sourcePerson.name.trim().toLowerCase() === person.name.trim().toLowerCase()
             );
             if (matchingSourcePerson) {
@@ -964,21 +955,23 @@ function App() {
         } else {
           categories.push({
             id: generateId(),
-            name: sourceCategory.name || 'General',
+            name: activeCategory.name,
             items: newItems,
           });
         }
-      });
 
-      return {
-        ...trip,
-        categories,
-        lastModified: Date.now(),
-      };
-    });
+        return {
+          ...trip,
+          categories,
+          lastModified: Date.now()
+        };
+      }
+      return trip;
+    }));
 
-    setPackingListSourceTripId('');
-    alert(`Copied ${copiedItemCount} item(s) from "${sourceTrip.name}" into "${currentTrip.name}".`);
+    setCopyListModalOpen(false);
+    setCopyListDestinationTripId('');
+    alert(`Packing list copied successfully!`);
   };
 
   const copyTrip = () => {
@@ -1328,19 +1321,7 @@ function App() {
             }}>Create New Trip</button>
             <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
             <button onClick={copyTrip}>Copy Trip</button>
-            <div className="trip-action-copy-row">
-              <select
-                value={packingListSourceTripId}
-                onChange={(e) => setPackingListSourceTripId(e.target.value)}
-                aria-label="Choose a trip to copy packing items from"
-              >
-                <option value="">Copy packing list from…</option>
-                {trips.filter(trip => trip.id !== currentTrip.id).map(trip => (
-                  <option key={trip.id} value={trip.id}>{trip.name}</option>
-                ))}
-              </select>
-              <button onClick={copyPackingListFromTrip}>Copy Packing List</button>
-            </div>
+
             {user.id === currentTrip.userId ? (
               <button onClick={deleteTrip} className="danger">Delete Trip</button>
             ) : (
@@ -1777,6 +1758,13 @@ function App() {
                 <h2>{activeCategory.name}</h2>
                 <div className="category-actions">
                   <button 
+                    className="copy-tab-btn" 
+                    onClick={() => setCopyListModalOpen(true)}
+                    title="Copy to Trip"
+                  >
+                    Copy to Trip
+                  </button>
+                  <button 
                     className="delete-tab-btn" 
                     onClick={() => deleteCategory(activeCategory.id)}
                     title="Delete Tab"
@@ -2025,6 +2013,46 @@ function App() {
         />
       )}
       <Analytics />
+      {/* Copy List Modal */}
+      {copyListModalOpen && (
+        <div className="share-modal-overlay" onClick={() => setCopyListModalOpen(false)}>
+          <div className="share-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="share-modal-header">
+              <h2>Copy Packing List</h2>
+              <button className="share-modal-close" onClick={() => setCopyListModalOpen(false)}>×</button>
+            </div>
+            <div className="share-modal-body">
+              <p>Select a trip to copy the current packing list into:</p>
+              <select
+                value={copyListDestinationTripId}
+                onChange={(e) => setCopyListDestinationTripId(e.target.value)}
+                className="copy-list-select"
+              >
+                <option value="">Select destination trip...</option>
+                {trips.filter(t => t.id !== currentTripId).map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <div className="copy-list-actions">
+                <button 
+                  onClick={() => setCopyListModalOpen(false)}
+                  className="copy-list-cancel-btn"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={copyCurrentTabToTrip}
+                  className="copy-list-confirm-btn"
+                  disabled={!copyListDestinationTripId}
+                >
+                  Copy List
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
