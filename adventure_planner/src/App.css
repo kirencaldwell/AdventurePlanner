@@ -1603,3 +1603,55 @@ select {
   background: #95a5a6;
   cursor: not-allowed;
 }
+
+/* Copy Modal Base Styles */
+.copy-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 2000;
+}
+
+.copy-modal-content {
+  position: relative;
+  width: min(500px, 100%);
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+}
+
+.copy-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.copy-modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.copy-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  color: #64748b;
+}
+
+.copy-modal-close:hover {
+  color: #0f172a;
+}
+
+.copy-modal-body p {
+  margin: 0 0 0.5rem 0;
+  color: #475569;
+}
