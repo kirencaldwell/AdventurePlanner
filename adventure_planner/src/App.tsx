@@ -1657,13 +1657,6 @@ function App() {
                         <div className="day-activities">
                           <div className="day-activities-header">
                             <h3>Activities</h3>
-                            <button
-                              type="button"
-                              className="add-activity-btn"
-                              onClick={() => addTripDayActivity(day.id)}
-                            >
-                              + Add Activity
-                            </button>
                           </div>
                           {(day.activities || []).length === 0 ? (
                             <p className="empty-activities">No activities yet.</p>
@@ -1742,6 +1735,15 @@ function App() {
                               ))}
                             </div>
                           )}
+                          <div className="add-activity-container" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                            <button
+                              type="button"
+                              className="add-activity-btn"
+                              onClick={() => addTripDayActivity(day.id)}
+                            >
+                              + Add Activity
+                            </button>
+                          </div>
                         </div>
                       </div>
                       <button className="delete-tab-btn" onClick={() => deleteTripDay(day.id)} title="Remove Day">×</button>

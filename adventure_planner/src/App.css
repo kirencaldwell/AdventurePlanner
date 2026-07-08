@@ -1492,7 +1492,7 @@ select {
   .day-row {
     grid-template-columns: 1fr;
     position: relative;
-    padding-top: 3.5rem;
+    padding-top: 4.5rem;
   }
 
   .day-number {
@@ -1517,7 +1517,7 @@ select {
   .activity-row {
     grid-template-columns: 1fr;
     position: relative;
-    padding-top: 3.5rem;
+    padding-top: 4.5rem;
   }
 
   .activity-number {
