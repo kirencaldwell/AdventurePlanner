@@ -401,203 +401,6 @@ select {
   display: none;
 }
 
-@media (max-width: 900px) {
-  .trip-header {
-    padding: 1.25rem;
-  }
-
-  .trip-info {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .content {
-    padding: 1rem;
-  }
-
-  .category-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .item-input {
-    width: 100%;
-  }
-
-  .item-input input {
-    width: 100%;
-  }
-
-  .weather-cards-container {
-    grid-template-columns: 1fr;
-  }
-
-  .day-row {
-    grid-template-columns: 1fr;
-  }
-
-  .day-inputs,
-  .objective-fields {
-    grid-template-columns: 1fr;
-  }
-
-  .objective-row {
-    grid-template-columns: 1fr;
-  }
-
-  .objective-number {
-    padding-top: 0;
-  }
-
-  .day-row .delete-objective-btn {
-    margin-top: 0;
-  }
-
-  .trip-input-row input {
-    max-width: 100%;
-  }
-
-  .weather-card-details {
-    grid-template-columns: 1fr;
-  }
-
-  .debrief-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-@media (max-width: 640px) {
-  .day-row {
-    padding: 0.75rem;
-  }
-
-  .day-number {
-    padding-top: 0;
-  }
-
-  .day-row input {
-    font-size: 1rem;
-    padding: 0.95rem 0.9rem;
-  }
-
-  .day-objectives-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .trip-input-row,
-  .trip-days {
-    padding: 1rem;
-  }
-}
-
-@media (max-width: 600px) {
-  body {
-    font-size: 14px;
-  }
-
-  .trip-header {
-    padding: 1rem;
-  }
-
-  .trip-title-wrapper {
-    align-items: flex-start;
-  }
-
-  .trip-stats {
-    padding-left: 0;
-    width: 100%;
-  }
-
-  .trip-stat {
-    flex: 1 1 140px;
-  }
-
-  .trip-actions {
-    width: 100%;
-  }
-
-  .trip-actions button,
-  .trip-actions select {
-    width: 100%;
-  }
-
-  .tabs button {
-    padding: 0.9rem 1rem;
-  }
-
-  .caltopo-map-embed,
-  .caltopo-map-embed iframe {
-    min-height: 320px;
-  }
-
-  .weather-placeholder {
-    padding: 2rem 1rem;
-  }
-
-  .packing-matrix th,
-  .packing-matrix td {
-    padding: 0.75rem;
-  }
-}
-
-@media print {
-  body {
-    background: #fff;
-  }
-
-  .trip-header,
-  .tabs,
-  .content,
-  .print-btn {
-    display: none !important;
-  }
-
-  .print-all-tabs-container {
-    display: block !important;
-    width: 100%;
-    color: #000;
-  }
-
-  .print-section {
-    margin-bottom: 1.5rem;
-    page-break-inside: avoid;
-  }
-
-  .print-section h2 {
-    margin-top: 0;
-  }
-
-  .print-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .print-table th,
-  .print-table td {
-    border: 1px solid #ccc;
-    padding: 0.5rem;
-  }
-
-  .print-day-card {
-    margin-bottom: 0.75rem;
-  }
-}
-
-.weather-placeholder {
-  text-align: center;
-  padding: 4rem;
-  background: var(--white);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
-}
-
-.caltopo-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
 
 .caltopo-input-row {
   display: flex;
@@ -1654,4 +1457,225 @@ select {
 .copy-modal-body p {
   margin: 0 0 0.5rem 0;
   color: #475569;
+}
+@media (max-width: 900px) {
+  .trip-header {
+    padding: 1.25rem;
+  }
+
+  .trip-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .content {
+    padding: 1rem;
+  }
+
+  .category-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .item-input {
+    width: 100%;
+  }
+
+  .item-input input {
+    width: 100%;
+  }
+
+  .weather-cards-container {
+    grid-template-columns: 1fr;
+  }
+
+  .day-row {
+    grid-template-columns: 1fr;
+    position: relative;
+    padding-top: 3.5rem;
+  }
+
+  .day-number {
+    position: absolute;
+    top: 1.25rem;
+    left: 1rem;
+    padding-top: 0;
+  }
+
+  .day-row > .delete-tab-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    margin: 0;
+  }
+
+  .day-inputs,
+  .activity-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .activity-row {
+    grid-template-columns: 1fr;
+    position: relative;
+    padding-top: 3.5rem;
+  }
+
+  .activity-number {
+    position: absolute;
+    top: 1.25rem;
+    left: 1rem;
+    padding-top: 0;
+  }
+
+  .day-row .delete-activity-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    margin: 0;
+  }
+
+  .trip-input-row input {
+    max-width: 100%;
+  }
+
+  .weather-card-details {
+    grid-template-columns: 1fr;
+  }
+
+  .debrief-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .day-row {
+    padding: 0.75rem;
+  }
+
+  .day-number {
+    padding-top: 0;
+  }
+
+  .day-row input {
+    font-size: 1rem;
+    padding: 0.95rem 0.9rem;
+  }
+
+  .day-objectives-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .trip-input-row,
+  .trip-days {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    font-size: 14px;
+  }
+
+  .trip-header {
+    padding: 1rem;
+  }
+
+  .trip-title-wrapper {
+    align-items: flex-start;
+  }
+
+  .trip-stats {
+    padding-left: 0;
+    width: 100%;
+  }
+
+  .trip-stat {
+    flex: 1 1 140px;
+  }
+
+  .trip-actions {
+    width: 100%;
+  }
+
+  .trip-actions button,
+  .trip-actions select {
+    width: 100%;
+  }
+
+  .tabs button {
+    padding: 0.9rem 1rem;
+  }
+
+  .caltopo-map-embed,
+  .caltopo-map-embed iframe {
+    min-height: 320px;
+  }
+
+  .weather-placeholder {
+    padding: 2rem 1rem;
+  }
+
+  .packing-matrix th,
+  .packing-matrix td {
+    padding: 0.75rem;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .trip-header,
+  .tabs,
+  .content,
+  .print-btn {
+    display: none !important;
+  }
+
+  .print-all-tabs-container {
+    display: block !important;
+    width: 100%;
+    color: #000;
+  }
+
+  .print-section {
+    margin-bottom: 1.5rem;
+    page-break-inside: avoid;
+  }
+
+  .print-section h2 {
+    margin-top: 0;
+  }
+
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .print-table th,
+  .print-table td {
+    border: 1px solid #ccc;
+    padding: 0.5rem;
+  }
+
+  .print-day-card {
+    margin-bottom: 0.75rem;
+  }
+}
+
+.weather-placeholder {
+  text-align: center;
+  padding: 4rem;
+  background: var(--white);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
+
+.caltopo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
