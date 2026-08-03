@@ -67,6 +67,12 @@ const getCurrentUsername = (user: User | null) => {
   return 'Unknown';
 };
 
+const canDeleteDiscussion = (user: User | null, currentTripUserId: string | undefined, author: string) => {
+  if (!user) return false;
+  if (currentTripUserId && user.id === currentTripUserId) return true;
+  return getCurrentUsername(user) === author;
+};
+
 const HtmlEmbed = ({ html }: { html: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -1169,6 +1175,14 @@ function App() {
     });
   };
 
+  const deleteDiscussion = (index: number) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      debriefDiscussions: (trip.debriefDiscussions || []).filter((_, i) => i !== index),
+      lastModified: Date.now(),
+    }));
+  };
+
   const addStrava = () => {
     const input = window.prompt('Paste Strava embed HTML (you can paste multiple embeds)');
     if (!input) return;
@@ -1555,9 +1569,21 @@ function App() {
             <div className="discussion-list">
               {(currentTrip.debriefDiscussions || []).map((discussion, index) => {
                 const { author, text } = parseDiscussionString(discussion);
+                const canDelete = canDeleteDiscussion(user, currentTrip.userId, author);
                 return (
                   <div key={`${currentTrip.id}-discussion-${index}`} className="discussion-card">
-                    <div className="discussion-author">{author}</div>
+                    <div className="discussion-card-header">
+                      <span className="discussion-author">{author}</span>
+                      {canDelete ? (
+                        <button
+                          className="delete-item-btn discussion-delete-btn"
+                          onClick={() => deleteDiscussion(index)}
+                          aria-label={`Delete discussion ${index + 1}`}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
                     <textarea
                       className="discussion-textarea"
                       placeholder={`Discussion ${index + 1}`}

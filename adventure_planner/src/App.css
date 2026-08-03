@@ -458,9 +458,24 @@ select {
   gap: 0.75rem;
 }
 
+.discussion-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
 .discussion-author {
   font-size: 0.9rem;
   color: #2f4f4f;
+  font-weight: 700;
+}
+
+.discussion-delete-btn {
+  background: transparent;
+  color: #e74c3c;
+  border: none;
+  cursor: pointer;
   font-weight: 700;
 }
 
