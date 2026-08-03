@@ -25,7 +25,7 @@ export interface Category {
 
 export interface TripActivity {
   id: string;
-  type: 'hiking' | 'ski-touring' | 'custom';
+  type: 'hiking' | 'ski-touring' | 'custom' | string;
   description: string;
   importance: 'mandatory' | 'optional';
   miles: string;
