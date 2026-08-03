@@ -19,6 +19,7 @@ export interface WeatherRow {
   snowfall?: number;
   error?: string;
   weatherCode?: number; // Added to help check if stormy
+  aqi?: number;
 }
 
 export const ALTITUDES = [0, 3000, 6000, 10000] as const;
@@ -256,6 +257,17 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     })
   ) as Record<number, { high: string; low: string }>;
 
+  // fetch AQI for this single date
+  let aqiVal: number | undefined = undefined;
+  try {
+    const aqiArr = await fetchAqiForLocationAndRange(dayLocation, date, date);
+    if (aqiArr && aqiArr.length > 0) {
+      aqiVal = aqiArr[0].aqi;
+    }
+  } catch (e) {
+    // ignore AQI lookup failures
+  }
+
   return {
     dayIndex,
     date,
@@ -272,6 +284,7 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     precipitation,
     snowfall,
     weatherCode: summaryCode,
+    aqi: aqiVal,
   };
 };
 
