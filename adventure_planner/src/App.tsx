@@ -444,6 +444,10 @@ function App() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [historyInitialized, setHistoryInitialized] = useState(false);
   const isHandlingPopState = useRef(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState<boolean>(true);
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [lastTranscript, setLastTranscript] = useState<string>('');
+  const recognitionRef = useRef<any>(null);
   const [hasForcedDashboard, setHasForcedDashboard] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
@@ -503,8 +507,13 @@ function App() {
     window.addEventListener('popstate', handlePopState);
     setHistoryInitialized(true);
 
+    // Clean up speech recognition on unmount
     return () => {
       window.removeEventListener('popstate', handlePopState);
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {};
+        recognitionRef.current = null;
+      }
     };
   }, []);
 
@@ -873,6 +882,69 @@ function App() {
       ),
       lastModified: Date.now(),
     }));
+  };
+
+  const speak = (text: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const utter = new SpeechSynthesisUtterance(text);
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utter);
+    } catch (e) {
+      console.error('TTS failed', e);
+    }
+  };
+
+  const findItemByName = (name: string) => {
+    const needle = name.trim().toLowerCase();
+    if (!needle) return null;
+    for (const cat of currentTrip.categories) {
+      for (const item of cat.items) {
+        if (item.name.toLowerCase().includes(needle)) return { item, category: cat };
+      }
+    }
+    return null;
+  };
+
+  const handleVoiceQuery = (transcript: string) => {
+    if (!transcript) return;
+    const t = transcript.toLowerCase();
+    setLastTranscript(transcript);
+
+    const isOnListMatch = t.match(/is (?:the )?(.*) on (?:the )?list/);
+    const isPackedMatch = t.match(/is (?:the )?(.*) packed/);
+    const statusMatch = t.match(/what(?:'s| is) the status of (?:the )?(.*)/);
+
+    let itemName = null as string | null;
+    if (isOnListMatch) itemName = isOnListMatch[1];
+    else if (isPackedMatch) itemName = isPackedMatch[1];
+    else if (statusMatch) itemName = statusMatch[1];
+
+    if (!itemName) {
+      const reply = "Sorry, I didn't understand. Try asking 'Is X on the list' or 'Is X packed'.";
+      speak(reply);
+      return;
+    }
+
+    const found = findItemByName(itemName);
+    if (!found) {
+      speak(`I couldn't find ${itemName} on this trip.`);
+      return;
+    }
+
+    const statuses = Object.entries(found.item.personStatuses || {});
+    if (statuses.length === 0) {
+      speak(`${found.item.name} is on the list but has no packer-specific status.`);
+      return;
+    }
+
+    const parts = statuses.map(([personId, status]) => {
+      const person = currentTrip.people.find(p => p.id === personId);
+      const name = person ? person.name : 'Someone';
+      return `${name} is ${status.replace(/-/g, ' ')}`;
+    });
+    const reply = `${found.item.name}: ${parts.join('; ')}.`;
+    speak(reply);
   };
 
   const promptForCustomActivityType = (currentValue: string) => {
@@ -1485,6 +1557,46 @@ function App() {
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
+            <div className="voice-controls">
+              <button
+                className={`voice-btn ${isListening ? 'listening' : ''}`}
+                onClick={() => {
+                  if (isListening) {
+                    try { recognitionRef.current?.stop(); } catch {};
+                    setIsListening(false);
+                  } else {
+                    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                    if (!SpeechRecognition) {
+                      alert('Speech Recognition not supported in this browser.');
+                      return;
+                    }
+                    if (recognitionRef.current) {
+                      recognitionRef.current.start();
+                      setIsListening(true);
+                    } else {
+                      const rec = new SpeechRecognition();
+                      rec.lang = 'en-US';
+                      rec.interimResults = false;
+                      rec.maxAlternatives = 1;
+                      rec.onresult = (ev: any) => {
+                        const transcript = Array.from(ev.results).map((r: any) => r[0].transcript).join(' ');
+                        setLastTranscript(transcript);
+                        handleVoiceQuery(transcript);
+                      };
+                      rec.onend = () => setIsListening(false);
+                      rec.onerror = (e: any) => { console.error('Speech error', e); setIsListening(false); };
+                      recognitionRef.current = rec;
+                      rec.start();
+                      setIsListening(true);
+                    }
+                  }
+                }}
+                title="Ask about trip items by voice"
+              >
+                {isListening ? 'Stop Voice' : 'Ask (voice)'}
+              </button>
+              <div className="voice-transcript">{lastTranscript}</div>
+            </div>
           </div>
         </div>
 
