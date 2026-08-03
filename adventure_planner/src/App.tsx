@@ -444,7 +444,6 @@ function App() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [historyInitialized, setHistoryInitialized] = useState(false);
   const isHandlingPopState = useRef(false);
-  const [isVoiceEnabled, setIsVoiceEnabled] = useState<boolean>(true);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [lastTranscript, setLastTranscript] = useState<string>('');
   const recognitionRef = useRef<any>(null);
@@ -896,6 +895,7 @@ function App() {
   };
 
   const findItemByName = (name: string) => {
+    if (!currentTrip) return null;
     const needle = name.trim().toLowerCase();
     if (!needle) return null;
     for (const cat of currentTrip.categories) {
@@ -906,45 +906,94 @@ function App() {
     return null;
   };
 
+  const parseVoiceIntent = (transcript: string): { intent: 'is_on_list' | 'is_packed' | 'status' | 'who_has' | 'unknown'; item: string | null } => {
+    const t = transcript.trim().toLowerCase();
+    // who has X
+    let m = t.match(/who (?:has|got|is holding|has got) (?:the )?(.*)/);
+    if (m) return { intent: 'who_has', item: m[1].trim() };
+
+    // what is the status of X / what's the status of X
+    m = t.match(/what(?:'s| is) the status of (?:the )?(.*)/);
+    if (m) return { intent: 'status', item: m[1].trim() };
+
+    // is X on the list / is X on my list
+    if (t.includes(' on the list') || t.includes(' on my list') || t.includes(' on list')) {
+      const parts = t.split(' on ');
+      return { intent: 'is_on_list', item: parts[0].replace(/^(is |does |do |does )/, '').trim() };
+    }
+
+    // is X packed / is X in the car / is X packed for
+    m = t.match(/is (?:the )?(.*) (?:packed|in the car|in-car|fully packed|fully-packed)/);
+    if (m) return { intent: 'is_packed', item: m[1].trim() };
+
+    // fallback: try simple 'is X' questions
+    m = t.match(/is (?:the )?(.*)/);
+    if (m) return { intent: 'status', item: m[1].trim() };
+
+    return { intent: 'unknown', item: null };
+  };
+
   const handleVoiceQuery = (transcript: string) => {
     if (!transcript) return;
-    const t = transcript.toLowerCase();
     setLastTranscript(transcript);
-
-    const isOnListMatch = t.match(/is (?:the )?(.*) on (?:the )?list/);
-    const isPackedMatch = t.match(/is (?:the )?(.*) packed/);
-    const statusMatch = t.match(/what(?:'s| is) the status of (?:the )?(.*)/);
-
-    let itemName = null as string | null;
-    if (isOnListMatch) itemName = isOnListMatch[1];
-    else if (isPackedMatch) itemName = isPackedMatch[1];
-    else if (statusMatch) itemName = statusMatch[1];
-
-    if (!itemName) {
-      const reply = "Sorry, I didn't understand. Try asking 'Is X on the list' or 'Is X packed'.";
-      speak(reply);
+    if (!currentTrip) {
+      speak('No trip is selected. Please open a trip first.');
+      return;
+    }
+    const { intent, item } = parseVoiceIntent(transcript);
+    if (!item) {
+      speak("Sorry, I didn't understand. Try asking 'Is X on the list' or 'Who has X'.");
       return;
     }
 
-    const found = findItemByName(itemName);
+    const found = findItemByName(item);
     if (!found) {
-      speak(`I couldn't find ${itemName} on this trip.`);
+      speak(`I couldn't find ${item} on this trip.`);
       return;
     }
 
     const statuses = Object.entries(found.item.personStatuses || {});
+    const packedStates = new Set(['fully-packed', 'in-car', 'in-car']);
+
+    if (intent === 'is_on_list') {
+      speak(`${found.item.name} is on this trip.`);
+      return;
+    }
+
+    if (intent === 'is_packed') {
+      const packedBy = statuses.filter(([_, s]) => packedStates.has(s)).map(([personId]) => {
+        const p = currentTrip.people.find(pp => pp.id === personId);
+        return p ? p.name : 'Someone';
+      });
+      if (packedBy.length > 0) {
+        speak(`${found.item.name} is packed by ${packedBy.join(', ')}.`);
+      } else {
+        speak(`${found.item.name} is not packed yet.`);
+      }
+      return;
+    }
+
+    if (intent === 'who_has') {
+      const holders = statuses.filter(([_, s]) => packedStates.has(s)).map(([personId]) => {
+        const p = currentTrip.people.find(pp => pp.id === personId);
+        return p ? p.name : 'Someone';
+      });
+      if (holders.length > 0) speak(`${holders.join(', ')} have ${found.item.name}.`);
+      else speak(`No one has ${found.item.name} packed right now.`);
+      return;
+    }
+
+    // status or fallback
     if (statuses.length === 0) {
       speak(`${found.item.name} is on the list but has no packer-specific status.`);
       return;
     }
-
     const parts = statuses.map(([personId, status]) => {
       const person = currentTrip.people.find(p => p.id === personId);
       const name = person ? person.name : 'Someone';
       return `${name} is ${status.replace(/-/g, ' ')}`;
     });
-    const reply = `${found.item.name}: ${parts.join('; ')}.`;
-    speak(reply);
+    speak(`${found.item.name}: ${parts.join('; ')}.`);
   };
 
   const promptForCustomActivityType = (currentValue: string) => {
