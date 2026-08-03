@@ -442,6 +442,8 @@ function App() {
   const [view, setView] = useState<'dashboard' | 'trip-detail'>(() => getStoredViewState()?.view ?? 'dashboard');
   const [activeTab, setActiveTab] = useState<string>(() => getStoredViewState()?.activeTab ?? 'trip');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [historyInitialized, setHistoryInitialized] = useState(false);
+  const isHandlingPopState = useRef(false);
   const [hasForcedDashboard, setHasForcedDashboard] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
@@ -466,10 +468,45 @@ function App() {
       window.sessionStorage.setItem(STORAGE_KEYS.view, view);
       window.sessionStorage.setItem(STORAGE_KEYS.currentTripId, currentTripId || '');
       window.sessionStorage.setItem(STORAGE_KEYS.activeTab, activeTab);
+      if (!historyInitialized) return;
+      if (isHandlingPopState.current) {
+        isHandlingPopState.current = false;
+      } else {
+        const state = { view, currentTripId, activeTab };
+        window.history.pushState(state, document.title, window.location.pathname);
+      }
     } catch {
       // Ignore storage errors so the app can keep working.
     }
-  }, [view, currentTripId, activeTab]);
+  }, [view, currentTripId, activeTab, historyInitialized]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (!event.state) {
+        setView('dashboard');
+        setCurrentTripId(null);
+        setActiveTab('trip');
+        return;
+      }
+
+      isHandlingPopState.current = true;
+      const nextState = event.state as { view: 'dashboard' | 'trip-detail'; currentTripId: string | null; activeTab: string };
+      setView(nextState.view);
+      setCurrentTripId(nextState.currentTripId);
+      setActiveTab(nextState.activeTab);
+    };
+
+    const initialState = { view, currentTripId, activeTab };
+    window.history.replaceState(initialState, document.title, window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    setHistoryInitialized(true);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
 
   // Handle Auth Session
   useEffect(() => {
@@ -663,6 +700,7 @@ function App() {
     setTrips(prev => [...prev, newTrip]);
     setCurrentTripId(newTrip.id);
     setView('trip-detail');
+    setActiveTab('trip');
   };
 
   const currentTrip = trips.find(t => t.id === currentTripId) || null;
