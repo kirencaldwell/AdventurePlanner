@@ -875,6 +875,12 @@ function App() {
     }));
   };
 
+  const promptForCustomActivityType = (currentValue: string) => {
+    if (typeof window === 'undefined') return null;
+    const result = window.prompt('Enter a custom activity type:', currentValue && currentValue !== 'custom' ? currentValue : '');
+    return result?.trim() || null;
+  };
+
   const deleteTripDayActivity = (dayId: string, activityId: string) => {
     updateCurrentTrip(trip => ({
       ...trip,
@@ -1843,10 +1849,23 @@ function App() {
                                       <span className="day-field-label">Type</span>
                                       <select
                                         value={activity.type}
-                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { type: e.target.value as any })}
+                                        onChange={(e) => {
+                                          const selectedValue = e.target.value;
+                                          if (selectedValue === 'custom') {
+                                            const customType = promptForCustomActivityType(activity.type);
+                                            if (customType) {
+                                              updateTripDayActivity(day.id, activity.id, { type: customType });
+                                            }
+                                          } else {
+                                            updateTripDayActivity(day.id, activity.id, { type: selectedValue as any });
+                                          }
+                                        }}
                                       >
                                         <option value="hiking">Hiking</option>
                                         <option value="ski-touring">Ski Touring</option>
+                                        {activity.type !== 'hiking' && activity.type !== 'ski-touring' && activity.type !== 'custom' && (
+                                          <option value={activity.type}>{activity.type}</option>
+                                        )}
                                         <option value="custom">Custom</option>
                                       </select>
                                     </label>
