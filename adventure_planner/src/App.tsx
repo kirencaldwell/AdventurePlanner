@@ -191,20 +191,20 @@ const likelihoodClass = (pct: number): string => {
 };
 
 const formatForecastStartLabel = (startDate: string): string => {
-  // Parse startDate (YYYY-MM-DD) as local midnight and compare to local today midnight
+  // The forecast startDate strings are generated in UTC. Compute weekday using UTC
+  // to avoid client timezone offsets causing off-by-one day labels.
   const msPerDay = 24 * 60 * 60 * 1000;
-  const now = new Date();
-  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  const parts = startDate.split('-').map(p => parseInt(p, 10));
-  if (parts.length !== 3 || parts.some(isNaN)) return startDate;
-  const [y, m, d] = parts;
-  const targetMidnight = new Date(y, m - 1, d);
-
-  const diffDays = Math.round((targetMidnight.getTime() - todayMidnight.getTime()) / msPerDay);
-  const weekday = targetMidnight.toLocaleDateString(undefined, { weekday: 'long' });
-  if (diffDays <= 0) return `Today (${weekday})`;
-  return weekday;
+  const toUtcMidnight = (s: string) => new Date(`${s}T00:00:00Z`);
+  try {
+    const targetUtc = toUtcMidnight(startDate);
+    const todayUtc = toUtcMidnight(getTodayString());
+    const diffDays = Math.round((targetUtc.getTime() - todayUtc.getTime()) / msPerDay);
+    const weekday = targetUtc.toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' });
+    if (diffDays <= 0) return `Today (${weekday})`;
+    return weekday;
+  } catch {
+    return startDate;
+  }
 };
 
 const WeatherDayCard = ({
