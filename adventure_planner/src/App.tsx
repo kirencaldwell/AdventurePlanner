@@ -1168,12 +1168,6 @@ function App() {
       lastModified: Date.now(),
     }));
   };
-    updateCurrentTrip(trip => ({
-      ...trip,
-      debriefStravaEmbeds: (trip.debriefStravaEmbeds || []).filter((_, i) => i !== index),
-      lastModified: Date.now(),
-    }));
-  };
 
   const deleteCategory = (id: string) => {
     if (!confirm('Are you sure you want to delete this tab and all its items?')) return;
