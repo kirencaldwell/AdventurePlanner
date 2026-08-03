@@ -168,6 +168,23 @@ body {
   white-space: nowrap;
 }
 
+.forecast-day-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+}
+.aqi-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: white;
+  margin-left: 4px;
+}
+.aqi-good { background: #27ae60; }
+.aqi-moderate { background: #f39c12; }
+.aqi-poor { background: #e74c3c; }
+
 button {
   padding: 8px 16px;
   border-radius: var(--border-radius);
