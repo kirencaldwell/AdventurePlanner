@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import type { Trip, StatusId, TripActivity, TripDay } from './types';
 import type { StartingDayForecast } from './weatherUtils';
@@ -33,6 +33,31 @@ const clearJoinParam = () => {
   const url = new URL(window.location.href);
   url.searchParams.delete('join');
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+};
+
+
+const parseStravaEmbeds = (input: string) => {
+  const regex = /(<iframe[\s\S]*?<\/iframe>\s*(?:<script[\s\S]*?<\/script>\s*)*)|(<blockquote[\s\S]*?<\/blockquote>\s*(?:<script[\s\S]*?<\/script>\s*)*)/gi;
+  const matches = Array.from(input.matchAll(regex)).map(match => (match[1] || match[2] || '').trim()).filter(Boolean);
+  return matches.length > 0 ? matches : [input.trim()];
+};
+
+const HtmlEmbed = ({ html }: { html: string }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    containerRef.current.innerHTML = html;
+    const scripts = Array.from(containerRef.current.querySelectorAll<HTMLScriptElement>('script'));
+    scripts.forEach(oldScript => {
+      const newScript = document.createElement('script');
+      Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+      newScript.text = oldScript.text;
+      oldScript.parentNode?.replaceChild(newScript, oldScript);
+    });
+  }, [html]);
+
+  return <div ref={containerRef} className="strava-card-content" />;
 };
 
 const STORAGE_KEYS = {
@@ -570,7 +595,6 @@ function App() {
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
         debrief_discussions: t.debriefDiscussions || [],
-        debrief_strava_embeds: t.debriefStravaEmbeds || [],
         user_id: t.userId || user.id,
         shared_with: t.sharedWith || [],
         last_modified: t.lastModified
@@ -1129,11 +1153,7 @@ function App() {
     const input = window.prompt('Paste Strava embed HTML (you can paste multiple embeds)');
     if (!input) return;
 
-    // Find iframe or blockquote embeds (common Strava embed formats)
-    const regex = /(<iframe[\s\S]*?<\/iframe>)|(<blockquote[\s\S]*?<\/blockquote>)/gi;
-    const matches = Array.from(input.matchAll(regex)).map(m => m[0]);
-    const embeds = matches.length > 0 ? matches : [input];
-
+    const embeds = parseStravaEmbeds(input);
     updateCurrentTrip(trip => ({
       ...trip,
       debriefStravaEmbeds: [...(trip.debriefStravaEmbeds || []), ...embeds],
@@ -1529,7 +1549,7 @@ function App() {
             <div className="strava-embeds">
               {(currentTrip.debriefStravaEmbeds || []).map((embed, index) => (
                 <div key={`${currentTrip.id}-strava-${index}`} className="strava-card">
-                  <div className="strava-card-content" dangerouslySetInnerHTML={{ __html: embed }} />
+                  <HtmlEmbed html={embed} />
                   <button
                     className="delete-item-btn"
                     onClick={() => removeStravaEmbed(index)}
