@@ -1156,7 +1156,7 @@ function App() {
     const embeds = parseStravaEmbeds(input);
     updateCurrentTrip(trip => ({
       ...trip,
-      debriefStravaEmbeds: [...(trip.debriefStravaEmbeds || []), ...embeds],
+      debriefStravaEmbeds: [...embeds, ...(trip.debriefStravaEmbeds || [])],
       lastModified: Date.now(),
     }));
   };
@@ -1546,6 +1546,18 @@ function App() {
               />
             </div>
 
+            <div className="discussion-list">
+              {(currentTrip.debriefDiscussions || []).map((discussion, index) => (
+                <textarea
+                  key={`${currentTrip.id}-discussion-${index}`}
+                  className="discussion-textarea"
+                  placeholder={`Discussion ${index + 1}`}
+                  value={discussion}
+                  onChange={(e) => updateDiscussion(index, e.target.value)}
+                />
+              ))}
+            </div>
+
             <div className="strava-embeds">
               {(currentTrip.debriefStravaEmbeds || []).map((embed, index) => (
                 <div key={`${currentTrip.id}-strava-${index}`} className="strava-card">
@@ -1558,18 +1570,6 @@ function App() {
                     Remove
                   </button>
                 </div>
-              ))}
-            </div>
-
-            <div className="discussion-list">
-              {(currentTrip.debriefDiscussions || []).map((discussion, index) => (
-                <textarea
-                  key={`${currentTrip.id}-discussion-${index}`}
-                  className="discussion-textarea"
-                  placeholder={`Discussion ${index + 1}`}
-                  value={discussion}
-                  onChange={(e) => updateDiscussion(index, e.target.value)}
-                />
               ))}
             </div>
           </div>

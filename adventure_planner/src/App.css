@@ -460,9 +460,21 @@ select {
 }
 
 .strava-embeds {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  scroll-snap-type: x mandatory;
+}
+
+.strava-embeds::-webkit-scrollbar {
+  height: 10px;
+}
+
+.strava-embeds::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 999px;
 }
 
 .strava-card {
@@ -473,6 +485,8 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 320px;
+  scroll-snap-align: start;
 }
 
 .strava-card-content iframe,
