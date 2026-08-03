@@ -194,9 +194,10 @@ const formatForecastStartLabel = (startDate: string): string => {
   const today = new Date(getTodayString());
   const target = new Date(`${startDate}T00:00:00Z`);
   const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays <= 0) return 'Today';
-  if (diffDays === 1) return 'Tomorrow';
-  return `${diffDays} days`;
+  const weekday = target.toLocaleDateString(undefined, { weekday: 'long' });
+  if (diffDays <= 0) return `Today (${weekday})`;
+  // For future days prefer the weekday name (e.g., "Tuesday", "Wednesday")
+  return weekday;
 };
 
 const WeatherDayCard = ({
