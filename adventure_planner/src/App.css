@@ -182,7 +182,7 @@ body {
   margin-left: 4px;
 }
 .aqi-good { background: #00e400; color: #000; }
-.aqi-moderate { background: #ffff00; color: #000; }
+.aqi-moderate { background: #f1c40f; color: #000; }
 .aqi-usg { background: #ff7e00; }
 .aqi-unhealthy { background: #ff0000; }
 .aqi-very-unhealthy { background: #8f3f97; }
