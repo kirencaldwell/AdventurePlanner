@@ -228,7 +228,14 @@ const WeatherDayCard = ({
         {row.summary === 'Forecast unavailable for this date' || row.summary === 'Weather service unavailable' ? (
           <p className="weather-unavailable-message">Forecast not available yet for this trip date.</p>
         ) : (
-          <p className="weather-summary">{row.summary}</p>
+          <>
+            <p className="weather-summary">{row.summary}</p>
+            {typeof row.aqi === 'number' && (
+              <div className={`weather-aqi ${row.aqi > 100 ? 'aqi-poor' : row.aqi > 50 ? 'aqi-moderate' : 'aqi-good'}`}>
+                AQI {row.aqi}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -379,9 +386,16 @@ const TripDashboard = ({
                   <h2>{trip.name}</h2>
                 </div>
                 <div className="trip-card-badges">
-                  <span className="weather-status-badge" style={{ background: statusColor }}>
-                    {weatherStatus}
-                  </span>
+                          <span className="weather-status-badge" style={{ background: statusColor }}>
+                            {weatherStatus}
+                          </span>
+                          {trip.weatherData && Object.values(trip.weatherData).length > 0 && (() => {
+                            const aqiValues = Object.values(trip.weatherData).map((r: any) => r.aqi).filter((v: any) => typeof v === 'number') as number[];
+                            if (aqiValues.length === 0) return null;
+                            const maxAqi = Math.max(...aqiValues);
+                            const aqiClass = maxAqi > 100 ? 'aqi-poor' : maxAqi > 50 ? 'aqi-moderate' : 'aqi-good';
+                            return (<span className={`trip-aqi-badge ${aqiClass}`}>AQI {maxAqi}</span>);
+                          })()}
                 </div>
                 <div className="trip-card-meta">
                   <span>📅 {getTripDateRange(trip.startDate, stats.dayCount)}</span>
