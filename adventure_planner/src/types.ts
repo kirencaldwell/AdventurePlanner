@@ -57,6 +57,7 @@ export interface Trip {
   weatherData?: Record<number, WeatherRow>; // dayIndex -> WeatherRow
   lastWeatherUpdate?: number; // timestamp
   debriefDiscussions?: string[];
+  debriefStravaEmbeds?: string[];
   userId?: string;
   sharedWith?: string[];
   lastModified: number;

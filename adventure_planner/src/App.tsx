@@ -488,6 +488,7 @@ function App() {
             caltopoUrl: row.caltopo_url || '',
             photosUrl: row.photos_url || '',
             debriefDiscussions: row.debrief_discussions || [],
+            debriefStravaEmbeds: row.debrief_strava_embeds || [],
             userId: row.user_id,
             sharedWith: row.shared_with || [],
             lastModified: Number(row.last_modified || Date.now())
@@ -569,6 +570,7 @@ function App() {
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
         debrief_discussions: t.debriefDiscussions || [],
+        debrief_strava_embeds: t.debriefStravaEmbeds || [],
         user_id: t.userId || user.id,
         shared_with: t.sharedWith || [],
         last_modified: t.lastModified
@@ -1123,6 +1125,30 @@ function App() {
     });
   };
 
+  const addStrava = () => {
+    const input = window.prompt('Paste Strava embed HTML (you can paste multiple embeds)');
+    if (!input) return;
+
+    // Find iframe or blockquote embeds (common Strava embed formats)
+    const regex = /(<iframe[\s\S]*?<\/iframe>)|(<blockquote[\s\S]*?<\/blockquote>)/gi;
+    const matches = Array.from(input.matchAll(regex)).map(m => m[0]);
+    const embeds = matches.length > 0 ? matches : [input];
+
+    updateCurrentTrip(trip => ({
+      ...trip,
+      debriefStravaEmbeds: [...(trip.debriefStravaEmbeds || []), ...embeds],
+      lastModified: Date.now(),
+    }));
+  };
+
+  const removeStravaEmbed = (index: number) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      debriefStravaEmbeds: (trip.debriefStravaEmbeds || []).filter((_, i) => i !== index),
+      lastModified: Date.now(),
+    }));
+  };
+
   const deleteCategory = (id: string) => {
     if (!confirm('Are you sure you want to delete this tab and all its items?')) return;
     updateCurrentTrip(trip => ({
@@ -1480,7 +1506,10 @@ function App() {
                 <h2>Debrief</h2>
                 <p>Capture notes and discussion points from the trip.</p>
               </div>
-              <button onClick={addDiscussion}>+ Add Discussion</button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={addStrava}>+ Add Strava</button>
+                <button onClick={addDiscussion}>+ Add Discussion</button>
+              </div>
             </div>
             
             <div className="photos-link-section" style={{ marginBottom: '1rem' }}>
@@ -1495,6 +1524,21 @@ function App() {
                 }}
                 style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--border-radius)', border: '1px solid #ccc' }}
               />
+            </div>
+
+            <div className="strava-embeds">
+              {(currentTrip.debriefStravaEmbeds || []).map((embed, index) => (
+                <div key={`${currentTrip.id}-strava-${index}`} className="strava-card">
+                  <div className="strava-card-content" dangerouslySetInnerHTML={{ __html: embed }} />
+                  <button
+                    className="delete-item-btn"
+                    onClick={() => removeStravaEmbed(index)}
+                    aria-label={`Remove Strava embed ${index + 1}`}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
             </div>
 
             <div className="discussion-list">
