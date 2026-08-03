@@ -421,8 +421,11 @@ const TripDashboard = ({
                           <div className="forecast-window-summary">{goodDays}/{tripDayCount} good days</div>
                           <div className="forecast-days-icons">
                             {fd.days.map((d, idx) => (
-                              <span key={idx} className="forecast-day-icon" title={`Day ${idx + 1}: ${d.summary}`}>
+                              <span key={idx} className="forecast-day-icon" title={`Day ${idx + 1}: ${d.summary}${d.aqi ? ' • AQI ' + d.aqi : ''}`}>
                                 {weatherCodeEmoji(d.weatherCode)}
+                                {typeof d.aqi === 'number' && (
+                                  <span className={`aqi-badge aqi-${d.aqi > 100 ? 'poor' : d.aqi > 50 ? 'moderate' : 'good'}`}>{d.aqi}</span>
+                                )}
                               </span>
                             ))}
                           </div>
