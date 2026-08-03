@@ -190,6 +190,16 @@ const likelihoodClass = (pct: number): string => {
   return 'bad';
 };
 
+const getAqiCategory = (aqi: number | undefined | null): string => {
+  if (aqi == null) return 'unknown';
+  if (aqi <= 50) return 'good';
+  if (aqi <= 100) return 'moderate';
+  if (aqi <= 150) return 'usg';
+  if (aqi <= 200) return 'unhealthy';
+  if (aqi <= 300) return 'very-unhealthy';
+  return 'hazardous';
+};
+
 const formatForecastStartLabel = (startDate: string): string => {
   // The forecast startDate strings are generated in UTC. Compute weekday using UTC
   // to avoid client timezone offsets causing off-by-one day labels.
@@ -231,7 +241,7 @@ const WeatherDayCard = ({
           <>
             <p className="weather-summary">{row.summary}</p>
             {typeof row.aqi === 'number' && (
-              <div className={`weather-aqi ${row.aqi > 100 ? 'aqi-poor' : row.aqi > 50 ? 'aqi-moderate' : 'aqi-good'}`}>
+              <div className={`weather-aqi aqi-${getAqiCategory(row.aqi)}`}>
                 AQI {row.aqi}
               </div>
             )}
@@ -393,7 +403,7 @@ const TripDashboard = ({
                             const aqiValues = Object.values(trip.weatherData).map((r: any) => r.aqi).filter((v: any) => typeof v === 'number') as number[];
                             if (aqiValues.length === 0) return null;
                             const maxAqi = Math.max(...aqiValues);
-                            const aqiClass = maxAqi > 100 ? 'aqi-poor' : maxAqi > 50 ? 'aqi-moderate' : 'aqi-good';
+                            const aqiClass = `aqi-${getAqiCategory(maxAqi)}`;
                             return (<span className={`trip-aqi-badge ${aqiClass}`}>AQI {maxAqi}</span>);
                           })()}
                 </div>
@@ -438,7 +448,7 @@ const TripDashboard = ({
                               <span key={idx} className="forecast-day-icon" title={`Day ${idx + 1}: ${d.summary}${d.aqi ? ' • AQI ' + d.aqi : ''}`}>
                                 {weatherCodeEmoji(d.weatherCode)}
                                 {typeof d.aqi === 'number' && (
-                                  <span className={`aqi-badge aqi-${d.aqi > 100 ? 'poor' : d.aqi > 50 ? 'moderate' : 'good'}`}>{d.aqi}</span>
+                                  <span className={`aqi-badge aqi-${getAqiCategory(d.aqi)}`}>{d.aqi}</span>
                                 )}
                               </span>
                             ))}
