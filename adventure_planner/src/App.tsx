@@ -42,6 +42,31 @@ const parseStravaEmbeds = (input: string) => {
   return matches.length > 0 ? matches : [input.trim()];
 };
 
+const parseDiscussionString = (raw: string) => {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && typeof parsed.author === 'string' && typeof parsed.text === 'string') {
+      return parsed as { author: string; text: string };
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return { author: 'Unknown', text: raw };
+};
+
+const formatDiscussionString = (author: string, text: string) => {
+  return JSON.stringify({ author, text });
+};
+
+const getCurrentUsername = (user: User | null) => {
+  if (!user) return 'Unknown';
+  const metadata = (user as any).user_metadata;
+  if (metadata?.full_name) return metadata.full_name;
+  if (metadata?.username) return metadata.username;
+  if (user.email) return user.email.split('@')[0];
+  return 'Unknown';
+};
+
 const HtmlEmbed = ({ html }: { html: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -418,7 +443,6 @@ function App() {
   // Forecast data keyed by trip id (7-day dashboard)
   const [forecastData, setForecastData] = useState<Record<string, StartingDayForecast[]>>({});
 
-  const [photosUrlInput, setPhotosUrlInput] = useState('');
   const [caltopoUrlError, setCaltopoUrlError] = useState<string | null>(null);
   const [weatherRows, setWeatherRows] = useState<WeatherRow[]>([]);
   const [weatherError, setWeatherError] = useState<string | null>(null);
@@ -511,7 +535,6 @@ function App() {
             startDate: row.start_date || '',
             days: row.days || [],
             caltopoUrl: row.caltopo_url || '',
-            photosUrl: row.photos_url || '',
             debriefDiscussions: row.debrief_discussions || [],
             debriefStravaEmbeds: row.debrief_strava_embeds || [],
             userId: row.user_id,
@@ -713,10 +736,6 @@ function App() {
     updateCurrentTrip(trip => ({ ...trip, caltopoUrl: url, lastModified: Date.now() }));
   };
 
-  const updatePhotosUrl = (url: string) => {
-    updateCurrentTrip(trip => ({ ...trip, photosUrl: url, lastModified: Date.now() }));
-  };
-
   const handleCaltopoLinkChange = (value: string) => {
     setCaltopoLinkInput(value);
     if (!value.trim()) {
@@ -841,10 +860,9 @@ function App() {
   useEffect(() => {
     if (currentTrip) {
       setCaltopoLinkInput(currentTrip.caltopoUrl || '');
-      setPhotosUrlInput(currentTrip.photosUrl || '');
       setCaltopoUrlError(null);
     }
-  }, [currentTrip?.caltopoUrl, currentTrip?.photosUrl]);
+  }, [currentTrip?.caltopoUrl]);
 
 
   const fetchWeather = async () => {
@@ -1130,9 +1148,10 @@ function App() {
   };
 
   const addDiscussion = () => {
+    const author = getCurrentUsername(user);
     updateCurrentTrip(trip => ({
       ...trip,
-      debriefDiscussions: [...(trip.debriefDiscussions || []), ''],
+      debriefDiscussions: [...(trip.debriefDiscussions || []), formatDiscussionString(author, '')],
       lastModified: Date.now(),
     }));
   };
@@ -1140,7 +1159,8 @@ function App() {
   const updateDiscussion = (index: number, value: string) => {
     updateCurrentTrip(trip => {
       const discussions = [...(trip.debriefDiscussions || [])];
-      discussions[index] = value;
+      const existing = parseDiscussionString(discussions[index] || '');
+      discussions[index] = formatDiscussionString(existing.author, value);
       return {
         ...trip,
         debriefDiscussions: discussions,
@@ -1532,34 +1552,25 @@ function App() {
               </div>
             </div>
             
-            <div className="photos-link-section" style={{ marginBottom: '1rem' }}>
-              <h3>Google Photos Album</h3>
-              <input
-                type="text"
-                placeholder="Paste Google Photos album link here"
-                value={photosUrlInput}
-                onChange={(e) => {
-                  setPhotosUrlInput(e.target.value);
-                  updatePhotosUrl(e.target.value);
-                }}
-                style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--border-radius)', border: '1px solid #ccc' }}
-              />
-            </div>
-
             <div className="discussion-list">
-              {(currentTrip.debriefDiscussions || []).map((discussion, index) => (
-                <textarea
-                  key={`${currentTrip.id}-discussion-${index}`}
-                  className="discussion-textarea"
-                  placeholder={`Discussion ${index + 1}`}
-                  value={discussion}
-                  onChange={(e) => updateDiscussion(index, e.target.value)}
-                />
-              ))}
+              {(currentTrip.debriefDiscussions || []).map((discussion, index) => {
+                const { author, text } = parseDiscussionString(discussion);
+                return (
+                  <div key={`${currentTrip.id}-discussion-${index}`} className="discussion-card">
+                    <div className="discussion-author">{author}</div>
+                    <textarea
+                      className="discussion-textarea"
+                      placeholder={`Discussion ${index + 1}`}
+                      value={text}
+                      onChange={(e) => updateDiscussion(index, e.target.value)}
+                    />
+                  </div>
+                );
+              })}
             </div>
 
             <div className="strava-embeds">
-              {(currentTrip.debriefStravaEmbeds || []).map((embed, index) => (
+                {(currentTrip.debriefStravaEmbeds || []).map((embed, index) => (
                 <div key={`${currentTrip.id}-strava-${index}`} className="strava-card">
                   <HtmlEmbed html={embed} />
                   <button
