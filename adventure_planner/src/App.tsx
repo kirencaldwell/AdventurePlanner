@@ -191,12 +191,19 @@ const likelihoodClass = (pct: number): string => {
 };
 
 const formatForecastStartLabel = (startDate: string): string => {
-  const today = new Date(getTodayString());
-  const target = new Date(`${startDate}T00:00:00Z`);
-  const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  const weekday = target.toLocaleDateString(undefined, { weekday: 'long' });
+  // Parse startDate (YYYY-MM-DD) as local midnight and compare to local today midnight
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const parts = startDate.split('-').map(p => parseInt(p, 10));
+  if (parts.length !== 3 || parts.some(isNaN)) return startDate;
+  const [y, m, d] = parts;
+  const targetMidnight = new Date(y, m - 1, d);
+
+  const diffDays = Math.round((targetMidnight.getTime() - todayMidnight.getTime()) / msPerDay);
+  const weekday = targetMidnight.toLocaleDateString(undefined, { weekday: 'long' });
   if (diffDays <= 0) return `Today (${weekday})`;
-  // For future days prefer the weekday name (e.g., "Tuesday", "Wednesday")
   return weekday;
 };
 
