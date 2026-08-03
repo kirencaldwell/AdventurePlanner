@@ -141,6 +141,33 @@ body {
   flex-wrap: wrap;
 }
 
+.voice-controls {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.75rem;
+}
+.voice-btn {
+  background: #0b5fff;
+  color: white;
+  border: none;
+  padding: 0.4rem 0.6rem;
+  margin-right: 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.voice-btn.listening {
+  background: #ff4d4d;
+}
+.voice-transcript {
+  font-size: 0.85rem;
+  color: #fff;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 button {
   padding: 8px 16px;
   border-radius: var(--border-radius);

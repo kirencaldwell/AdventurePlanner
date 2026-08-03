@@ -444,6 +444,9 @@ function App() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [historyInitialized, setHistoryInitialized] = useState(false);
   const isHandlingPopState = useRef(false);
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [lastTranscript, setLastTranscript] = useState<string>('');
+  const recognitionRef = useRef<any>(null);
   const [hasForcedDashboard, setHasForcedDashboard] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
@@ -503,8 +506,13 @@ function App() {
     window.addEventListener('popstate', handlePopState);
     setHistoryInitialized(true);
 
+    // Clean up speech recognition on unmount
     return () => {
       window.removeEventListener('popstate', handlePopState);
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {};
+        recognitionRef.current = null;
+      }
     };
   }, []);
 
@@ -873,6 +881,119 @@ function App() {
       ),
       lastModified: Date.now(),
     }));
+  };
+
+  const speak = (text: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const utter = new SpeechSynthesisUtterance(text);
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utter);
+    } catch (e) {
+      console.error('TTS failed', e);
+    }
+  };
+
+  const findItemByName = (name: string) => {
+    if (!currentTrip) return null;
+    const needle = name.trim().toLowerCase();
+    if (!needle) return null;
+    for (const cat of currentTrip.categories) {
+      for (const item of cat.items) {
+        if (item.name.toLowerCase().includes(needle)) return { item, category: cat };
+      }
+    }
+    return null;
+  };
+
+  const parseVoiceIntent = (transcript: string): { intent: 'is_on_list' | 'is_packed' | 'status' | 'who_has' | 'unknown'; item: string | null } => {
+    const t = transcript.trim().toLowerCase();
+    // who has X
+    let m = t.match(/who (?:has|got|is holding|has got) (?:the )?(.*)/);
+    if (m) return { intent: 'who_has', item: m[1].trim() };
+
+    // what is the status of X / what's the status of X
+    m = t.match(/what(?:'s| is) the status of (?:the )?(.*)/);
+    if (m) return { intent: 'status', item: m[1].trim() };
+
+    // is X on the list / is X on my list
+    if (t.includes(' on the list') || t.includes(' on my list') || t.includes(' on list')) {
+      const parts = t.split(' on ');
+      return { intent: 'is_on_list', item: parts[0].replace(/^(is |does |do |does )/, '').trim() };
+    }
+
+    // is X packed / is X in the car / is X packed for
+    m = t.match(/is (?:the )?(.*) (?:packed|in the car|in-car|fully packed|fully-packed)/);
+    if (m) return { intent: 'is_packed', item: m[1].trim() };
+
+    // fallback: try simple 'is X' questions
+    m = t.match(/is (?:the )?(.*)/);
+    if (m) return { intent: 'status', item: m[1].trim() };
+
+    return { intent: 'unknown', item: null };
+  };
+
+  const handleVoiceQuery = (transcript: string) => {
+    if (!transcript) return;
+    setLastTranscript(transcript);
+    if (!currentTrip) {
+      speak('No trip is selected. Please open a trip first.');
+      return;
+    }
+    const { intent, item } = parseVoiceIntent(transcript);
+    if (!item) {
+      speak("Sorry, I didn't understand. Try asking 'Is X on the list' or 'Who has X'.");
+      return;
+    }
+
+    const found = findItemByName(item);
+    if (!found) {
+      speak(`I couldn't find ${item} on this trip.`);
+      return;
+    }
+
+    const statuses = Object.entries(found.item.personStatuses || {});
+    const packedStates = new Set(['fully-packed', 'in-car', 'in-car']);
+
+    if (intent === 'is_on_list') {
+      speak(`${found.item.name} is on this trip.`);
+      return;
+    }
+
+    if (intent === 'is_packed') {
+      const packedBy = statuses.filter(([_, s]) => packedStates.has(s)).map(([personId]) => {
+        const p = currentTrip.people.find(pp => pp.id === personId);
+        return p ? p.name : 'Someone';
+      });
+      if (packedBy.length > 0) {
+        speak(`${found.item.name} is packed by ${packedBy.join(', ')}.`);
+      } else {
+        speak(`${found.item.name} is not packed yet.`);
+      }
+      return;
+    }
+
+    if (intent === 'who_has') {
+      const holders = statuses.filter(([_, s]) => packedStates.has(s)).map(([personId]) => {
+        const p = currentTrip.people.find(pp => pp.id === personId);
+        return p ? p.name : 'Someone';
+      });
+      if (holders.length > 0) speak(`${holders.join(', ')} have ${found.item.name}.`);
+      else speak(`No one has ${found.item.name} packed right now.`);
+      return;
+    }
+
+    // status or fallback
+    if (statuses.length === 0) {
+      speak(`${found.item.name} is on the list but has no packer-specific status.`);
+      return;
+    }
+    const parts = statuses.map(([personId, status]) => {
+      const person = currentTrip.people.find(p => p.id === personId);
+      const name = person ? person.name : 'Someone';
+      return `${name} is ${status.replace(/-/g, ' ')}`;
+    });
+    speak(`${found.item.name}: ${parts.join('; ')}.`);
   };
 
   const promptForCustomActivityType = (currentValue: string) => {
@@ -1485,6 +1606,46 @@ function App() {
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
+            <div className="voice-controls">
+              <button
+                className={`voice-btn ${isListening ? 'listening' : ''}`}
+                onClick={() => {
+                  if (isListening) {
+                    try { recognitionRef.current?.stop(); } catch {};
+                    setIsListening(false);
+                  } else {
+                    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                    if (!SpeechRecognition) {
+                      alert('Speech Recognition not supported in this browser.');
+                      return;
+                    }
+                    if (recognitionRef.current) {
+                      recognitionRef.current.start();
+                      setIsListening(true);
+                    } else {
+                      const rec = new SpeechRecognition();
+                      rec.lang = 'en-US';
+                      rec.interimResults = false;
+                      rec.maxAlternatives = 1;
+                      rec.onresult = (ev: any) => {
+                        const transcript = Array.from(ev.results).map((r: any) => r[0].transcript).join(' ');
+                        setLastTranscript(transcript);
+                        handleVoiceQuery(transcript);
+                      };
+                      rec.onend = () => setIsListening(false);
+                      rec.onerror = (e: any) => { console.error('Speech error', e); setIsListening(false); };
+                      recognitionRef.current = rec;
+                      rec.start();
+                      setIsListening(true);
+                    }
+                  }
+                }}
+                title="Ask about trip items by voice"
+              >
+                {isListening ? 'Stop Voice' : 'Ask (voice)'}
+              </button>
+              <div className="voice-transcript">{lastTranscript}</div>
+            </div>
           </div>
         </div>
 
