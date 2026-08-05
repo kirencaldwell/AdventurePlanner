@@ -401,8 +401,7 @@ const WeatherDayCard = ({
 
       </div>
     );
-  })()
-);
+  };
 
 const TripDashboard = ({
   trips,
