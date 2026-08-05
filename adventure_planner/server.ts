@@ -37,7 +37,6 @@ app.get('/api/trips', async (req, res) => {
   }
 });
 
-
 app.post('/api/trips', async (req, res) => {
   console.log('POST /api/trips');
   try {
