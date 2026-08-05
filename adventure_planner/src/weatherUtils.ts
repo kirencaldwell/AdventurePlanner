@@ -19,12 +19,8 @@ export interface WeatherRow {
   snowfall?: number;
   error?: string;
   weatherCode?: number; // Added to help check if stormy
-  coords?: { latitude: number; longitude: number } | null;
-  elevationFeet?: number | undefined;
   aqi?: number;
 }
-
-export const DEFAULT_DAY_ELEVATION_FEET = 3000;
 
 export const ALTITUDES = [0, 3000, 6000, 10000] as const;
 export const LAPSE_RATE_C_PER_M = 6.5 / 1000;
@@ -177,10 +173,8 @@ const buildWeatherDataUrl = (coords: { latitude: number; longitude: number }, st
   return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum,cloudcover_mean,visibility_mean&hourly=temperature_2m,relativehumidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
 };
 
-
-export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string, elevationFeet?: number): Promise<WeatherRow> => {
+export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
   const coords = await resolveLocationCoordinates(dayLocation);
-  const usedElevationFeet = typeof elevationFeet === 'number' && !Number.isNaN(elevationFeet) ? elevationFeet : DEFAULT_DAY_ELEVATION_FEET;
   if (!coords) {
     return {
       dayIndex,
@@ -298,8 +292,6 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     precipitation,
     snowfall,
     weatherCode: summaryCode,
-    coords: coords || null,
-    elevationFeet: usedElevationFeet,
     aqi: aqiVal,
   };
 };
