@@ -177,16 +177,6 @@ const buildWeatherDataUrl = (coords: { latitude: number; longitude: number }, st
   return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum,cloudcover_mean,visibility_mean&hourly=temperature_2m,relativehumidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
 };
 
-export const mountainForecastSearchUrl = (coords?: { latitude: number; longitude: number } | null, peakName?: string | undefined) => {
-  // Prefer a peak name search if provided (users can paste exact peak names).
-  if (peakName && peakName.trim() !== '') {
-    return `https://www.mountain-forecast.com/search?q=${encodeURIComponent(peakName.trim())}`;
-  }
-  if (!coords) return 'https://www.mountain-forecast.com/';
-  const lat = coords.latitude.toFixed(4);
-  const lon = coords.longitude.toFixed(4);
-  return `https://www.mountain-forecast.com/search?q=${encodeURIComponent(`${lat},${lon}`)}`;
-};
 
 export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string, elevationFeet?: number): Promise<WeatherRow> => {
   const coords = await resolveLocationCoordinates(dayLocation);

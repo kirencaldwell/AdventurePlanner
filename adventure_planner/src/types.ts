@@ -38,9 +38,7 @@ export interface TripDay {
   location: string;
   description?: string;
   notes?: string;
-  weatherLinks?: string;
   elevation?: number; // elevation in feet (optional)
-  peak?: string; // optional peak name for mountain-forecast lookup
   activities?: TripActivity[];
 }
 
@@ -58,6 +56,7 @@ export interface Trip {
   weatherStatus?: 'Good' | 'Mild' | 'Bad' | 'Pending' | 'Too Far in the Future';
   weatherData?: Record<number, WeatherRow>; // dayIndex -> WeatherRow
   lastWeatherUpdate?: number; // timestamp
+  additionalWeatherSources?: string[];
   debriefDiscussions?: string[];
   debriefStravaEmbeds?: string[];
   userId?: string;
