@@ -19,6 +19,7 @@ export interface WeatherRow {
   snowfall?: number;
   error?: string;
   weatherCode?: number; // Added to help check if stormy
+  coords?: { latitude: number; longitude: number } | null;
   aqi?: number;
 }
 
@@ -173,6 +174,13 @@ const buildWeatherDataUrl = (coords: { latitude: number; longitude: number }, st
   return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum,cloudcover_mean,visibility_mean&hourly=temperature_2m,relativehumidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
 };
 
+export const mountainForecastSearchUrl = (coords?: { latitude: number; longitude: number } | null) => {
+  if (!coords) return 'https://www.mountain-forecast.com/';
+  const lat = coords.latitude.toFixed(4);
+  const lon = coords.longitude.toFixed(4);
+  return `https://www.mountain-forecast.com/search?q=${encodeURIComponent(`${lat},${lon}`)}`;
+};
+
 export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
   const coords = await resolveLocationCoordinates(dayLocation);
   if (!coords) {
@@ -292,6 +300,7 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     precipitation,
     snowfall,
     weatherCode: summaryCode,
+    coords: coords || null,
     aqi: aqiVal,
   };
 };

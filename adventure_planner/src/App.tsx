@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import type { Trip, StatusId, TripActivity, TripDay } from './types';
 import type { StartingDayForecast } from './weatherUtils';
-import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
+import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate, mountainForecastSearchUrl } from './weatherUtils';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
@@ -351,6 +351,11 @@ const WeatherDayCard = ({
         </div>
       </>
     )}
+              {row.coords && (
+                <a key="mountain-forecast" href={mountainForecastSearchUrl(row.coords)} target="_blank" rel="noreferrer" className="weather-link">
+                  Mountain Forecast
+                </a>
+              )}
   </div>
 );
 
