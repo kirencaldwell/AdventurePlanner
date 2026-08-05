@@ -229,9 +229,34 @@ const WeatherDayCard = ({
   editable?: boolean;
   onNotesChange?: (value: string) => void;
   onLinksChange?: (value: string) => void;
-}) => (
-  <div className="weather-card">
-    <div className="weather-card-header">
+}) => {
+  const [mfUrl, setMfUrl] = useState<string | null>(null);
+  const [embed, setEmbed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const peak = day?.peak;
+        const coords = row?.coords;
+        const params = peak ? `?peak=${encodeURIComponent(peak)}` : (coords ? `?lat=${coords.latitude}&lon=${coords.longitude}` : '');
+        if (!params) return;
+        const resp = await fetch(`/api/mf/resolve${params}`);
+        if (!resp.ok) return;
+        const json = await resp.json();
+        if (!cancelled) setMfUrl(json.url || null);
+      } catch (e) {
+        // ignore
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row?.coords, day?.peak]);
+
+  return (
+    <div className="weather-card">
+      <div className="weather-card-header">
       <div className="weather-card-title">
         <h3>Day {row.dayIndex + 1} - {row.date}</h3>
         <p className="weather-location">{row.location || 'Missing location'}</p>
@@ -358,8 +383,24 @@ const WeatherDayCard = ({
         </a>
       )}
     </div>
-  </div>
-);
+
+    {mfUrl && (
+      <div className="weather-card-mf">
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <a href={mfUrl} target="_blank" rel="noreferrer" className="weather-link">Open Mountain Forecast</a>
+              <button type="button" className="weather-link" onClick={() => setEmbed(e => !e)}>{embed ? 'Hide Embed' : 'Embed Forecast'}</button>
+            </div>
+            {embed && (
+              <div style={{ marginTop: '8px' }}>
+                <iframe title={`mf-${row.dayIndex}`} src={mfUrl} style={{ width: '100%', height: 400, border: '1px solid #ddd' }} />
+              </div>
+            )}
+          </div>
+        )}
+
+      </div>
+    );
+  };
 
 const TripDashboard = ({
   trips,

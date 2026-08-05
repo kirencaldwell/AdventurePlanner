@@ -37,6 +37,37 @@ app.get('/api/trips', async (req, res) => {
   }
 });
 
+// Resolve a Mountain-Forecast URL for a given peak name or coordinates.
+app.get('/api/mf/resolve', async (req, res) => {
+  try {
+    const peak = typeof req.query.peak === 'string' ? req.query.peak : undefined;
+    const lat = typeof req.query.lat === 'string' ? req.query.lat : undefined;
+    const lon = typeof req.query.lon === 'string' ? req.query.lon : undefined;
+
+    const q = peak && peak.trim() !== ''
+      ? `https://www.mountain-forecast.com/search?q=${encodeURIComponent(peak.trim())}`
+      : lat && lon
+        ? `https://www.mountain-forecast.com/search?q=${encodeURIComponent(`${lat},${lon}`)}`
+        : 'https://www.mountain-forecast.com/';
+
+    const resp = await fetch(q, { headers: { Accept: 'text/html' } });
+    const text = await resp.text();
+
+    // Try to find a first peak result link like href="/peaks/..."
+    const m = text.match(/href="(\/peaks\/[^"\s]+)"/i);
+    if (m && m[1]) {
+      const url = `https://www.mountain-forecast.com${m[1]}`;
+      return res.json({ url });
+    }
+
+    // Fallback: return the search page we queried
+    return res.json({ url: q });
+  } catch (err) {
+    console.error('mf resolve error', err);
+    return res.status(500).json({ error: 'Failed to resolve Mountain Forecast URL' });
+  }
+});
+
 app.post('/api/trips', async (req, res) => {
   console.log('POST /api/trips');
   try {
