@@ -593,6 +593,7 @@ function App() {
             startDate: row.start_date || '',
             days: row.days || [],
             caltopoUrl: row.caltopo_url || '',
+            additionalWeatherSources: row.additional_weather_sources || [],
             debriefDiscussions: row.debrief_discussions || [],
             debriefStravaEmbeds: row.debrief_strava_embeds || [],
             userId: row.user_id,
