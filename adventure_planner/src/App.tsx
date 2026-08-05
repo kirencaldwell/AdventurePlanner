@@ -383,10 +383,9 @@ const WeatherDayCard = ({
         </a>
       )}
     </div>
-        </div>
 
-        {mfUrl && (
-          <div className="weather-card-mf">
+    {mfUrl && (
+      <div className="weather-card-mf">
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <a href={mfUrl} target="_blank" rel="noreferrer" className="weather-link">Open Mountain Forecast</a>
               <button type="button" className="weather-link" onClick={() => setEmbed(e => !e)}>{embed ? 'Hide Embed' : 'Embed Forecast'}</button>
