@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import type { Trip, StatusId, TripActivity, TripDay } from './types';
 import type { StartingDayForecast } from './weatherUtils';
-import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate, mountainForecastSearchUrl } from './weatherUtils';
+import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
@@ -222,38 +222,12 @@ const WeatherDayCard = ({
   day,
   editable = false,
   onNotesChange,
-  onLinksChange,
 }: {
   row: WeatherRow;
   day?: TripDay;
   editable?: boolean;
   onNotesChange?: (value: string) => void;
-  onLinksChange?: (value: string) => void;
 }) => {
-  const [mfUrl, setMfUrl] = useState<string | null>(null);
-  const [embed, setEmbed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const peak = day?.peak;
-        const coords = row?.coords;
-        const params = peak ? `?peak=${encodeURIComponent(peak)}` : (coords ? `?lat=${coords.latitude}&lon=${coords.longitude}` : '');
-        if (!params) return;
-        const resp = await fetch(`/api/mf/resolve${params}`);
-        if (!resp.ok) return;
-        const json = await resp.json();
-        if (!cancelled) setMfUrl(json.url || null);
-      } catch (e) {
-        // ignore
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row?.coords, day?.peak]);
-
   return (
     <div className="weather-card">
       <div className="weather-card-header">
@@ -343,61 +317,8 @@ const WeatherDayCard = ({
           />
         </div>
 
-        <div className="weather-card-links">
-          <label htmlFor={`weather-links-day-${row.dayIndex}`}>Additional Weather Sources</label>
-          <textarea
-            id={`weather-links-day-${row.dayIndex}`}
-            className="weather-links-input"
-            placeholder="Paste extra weather links here (one per line)"
-            value={day.weatherLinks || ''}
-            onChange={(e) => onLinksChange?.(e.target.value)}
-          />
-          <div className="weather-links-display">
-            {day.weatherLinks && day.weatherLinks
-              .split(/\n+/)
-              .map(link => link.trim())
-              .filter(Boolean)
-              .map(link => {
-                const isSafeProtocol = link.toLowerCase().startsWith('http://') || link.toLowerCase().startsWith('https://');
-                if (!isSafeProtocol) {
-                  return (
-                    <span key={link} className="weather-link invalid" title="Only http/https links are allowed">
-                      ⚠️ Invalid Link: {link.substring(0, 30)}...
-                    </span>
-                  );
-                }
-                return (
-                  <a key={link} href={link} target="_blank" rel="noreferrer" className="weather-link">
-                    {link}
-                  </a>
-                );
-              })}
-          </div>
-        </div>
       </>
     )}
-    <div className="weather-card-external-links">
-      {(day?.peak || row.coords) && (
-        <a key="mountain-forecast" href={mountainForecastSearchUrl(row.coords, day?.peak)} target="_blank" rel="noreferrer" className="weather-link">
-          Mountain Forecast
-        </a>
-      )}
-    </div>
-
-    {mfUrl && (
-      <div className="weather-card-mf">
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-              <a href={mfUrl} target="_blank" rel="noreferrer" className="weather-link">Open Mountain Forecast</a>
-              <button type="button" className="weather-link" onClick={() => setEmbed(e => !e)}>{embed ? 'Hide Embed' : 'Embed Forecast'}</button>
-            </div>
-            {embed && (
-              <div style={{ marginTop: '8px' }}>
-                <iframe title={`mf-${row.dayIndex}`} src={mfUrl} style={{ width: '100%', height: 400, border: '1px solid #ddd' }} />
-              </div>
-            )}
-          </div>
-        )}
-
       </div>
     );
   };
@@ -541,6 +462,9 @@ function App() {
   const [weatherRows, setWeatherRows] = useState<WeatherRow[]>([]);
   const [weatherError, setWeatherError] = useState<string | null>(null);
   const [selectedWeatherDetail, setSelectedWeatherDetail] = useState<{ isOpen: boolean; trip: Trip | null; row: WeatherRow | null; day?: TripDay }>({ isOpen: false, trip: null, row: null });
+  const [newWeatherSourceUrl, setNewWeatherSourceUrl] = useState('');
+  const [weatherSourceError, setWeatherSourceError] = useState<string | null>(null);
+  const [showNewWeatherSourceForm, setShowNewWeatherSourceForm] = useState(false);
   const [draggedDayId, setDraggedDayId] = useState<string | null>(null);
   const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
   const [copyListModalOpen, setCopyListModalOpen] = useState(false);
@@ -751,6 +675,7 @@ function App() {
         start_date: t.startDate || '',
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
+        additional_weather_sources: t.additionalWeatherSources || [],
         debrief_discussions: t.debriefDiscussions || [],
         user_id: t.userId || user.id,
         shared_with: t.sharedWith || [],
@@ -784,6 +709,7 @@ function App() {
       days: [],
       caltopoUrl: '',
       debriefDiscussions: [],
+      additionalWeatherSources: [],
       userId: userId,
       sharedWith: [],
       lastModified: Date.now(),
@@ -915,6 +841,44 @@ function App() {
       days: (trip.days || []).map(day =>
         day.id === dayId ? { ...day, elevation: elevationFeet } : day
       ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const isValidWeatherSourceUrl = (value: string) => {
+    try {
+      const url = new URL(value.trim());
+      return url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
+  const addWeatherSource = () => {
+    if (!currentTrip) return;
+    const url = newWeatherSourceUrl.trim();
+    if (!url) {
+      setWeatherSourceError('Enter a weather source URL.');
+      return;
+    }
+    if (!isValidWeatherSourceUrl(url)) {
+      setWeatherSourceError('Please enter a valid HTTPS URL.');
+      return;
+    }
+    updateCurrentTrip(trip => ({
+      ...trip,
+      additionalWeatherSources: [...(trip.additionalWeatherSources || []), url],
+      lastModified: Date.now(),
+    }));
+    setNewWeatherSourceUrl('');
+    setWeatherSourceError(null);
+    setShowNewWeatherSourceForm(false);
+  };
+
+  const removeWeatherSource = (index: number) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      additionalWeatherSources: (trip.additionalWeatherSources || []).filter((_, idx) => idx !== index),
       lastModified: Date.now(),
     }));
   };
@@ -1927,39 +1891,79 @@ function App() {
                 <p>Set a trip start date and add days with coordinates in the Trip tab.</p>
               </div>
             ) : (
-              <div className="weather-cards-container">
-                {weatherRows.map(row => {
-                  const day = currentTrip.days?.[row.dayIndex];
-                  return (
-                    <WeatherDayCard
-                      key={row.dayIndex}
-                      row={row}
-                      day={day}
-                      editable
-                      onNotesChange={(value) => {
-                        updateCurrentTrip(trip => {
-                          const days = [...(trip.days || [])];
-                          days[row.dayIndex] = {
-                            ...days[row.dayIndex],
-                            notes: value
-                          };
-                          return { ...trip, days, lastModified: Date.now() };
-                        });
-                      }}
-                      onLinksChange={(value) => {
-                        updateCurrentTrip(trip => {
-                          const days = [...(trip.days || [])];
-                          days[row.dayIndex] = {
-                            ...days[row.dayIndex],
-                            weatherLinks: value
-                          };
-                          return { ...trip, days, lastModified: Date.now() };
-                        });
-                      }}
-                    />
-                  );
-                })}
-              </div>
+              <>
+                <div className="weather-source-actions">
+                  <button
+                    type="button"
+                    className="add-weather-source-btn"
+                    onClick={() => setShowNewWeatherSourceForm((visible) => !visible)}
+                  >
+                    + Add Additional Weather Source
+                  </button>
+                  {showNewWeatherSourceForm && (
+                    <div className="weather-source-form">
+                      <input
+                        type="url"
+                        placeholder="https://example.com/weather"
+                        value={newWeatherSourceUrl}
+                        onChange={(e) => setNewWeatherSourceUrl(e.target.value)}
+                      />
+                      <button type="button" onClick={addWeatherSource}>
+                        Add Source
+                      </button>
+                      {weatherSourceError && (
+                        <div className="input-error">{weatherSourceError}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="weather-cards-container">
+                  {weatherRows.map(row => {
+                    const day = currentTrip.days?.[row.dayIndex];
+                    return (
+                      <WeatherDayCard
+                        key={row.dayIndex}
+                        row={row}
+                        day={day}
+                        editable
+                        onNotesChange={(value) => {
+                          updateCurrentTrip(trip => {
+                            const days = [...(trip.days || [])];
+                            days[row.dayIndex] = {
+                              ...days[row.dayIndex],
+                              notes: value
+                            };
+                            return { ...trip, days, lastModified: Date.now() };
+                          });
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+
+                {currentTrip?.additionalWeatherSources?.length ? (
+                  <div className="weather-additional-sources-list">
+                    {currentTrip.additionalWeatherSources.map((source, index) => (
+                      <div key={`${source}-${index}`} className="weather-additional-source-card">
+                        <div className="weather-additional-source-header">
+                          <a href={source} target="_blank" rel="noreferrer">
+                            {source}
+                          </a>
+                          <button type="button" onClick={() => removeWeatherSource(index)}>
+                            Remove
+                          </button>
+                        </div>
+                        <iframe
+                          title={`weather-source-${index}`}
+                          src={source}
+                          style={{ width: '100%', minHeight: 360, border: '1px solid #ddd' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         ) : activeTab === 'caltopo' ? (
@@ -2097,31 +2101,7 @@ function App() {
                               }}
                             />
                           </label>
-                          <label className="day-field">
-                            <span className="day-field-label">Peak (optional)</span>
-                            <input
-                              type="text"
-                              placeholder="e.g. Mount Rainier"
-                              value={day.peak || ''}
-                              onChange={(e) => updateCurrentTrip(trip => {
-                                const days = [...(trip.days || [])];
-                                days[index] = { ...days[index], peak: e.target.value };
-                                return { ...trip, days, lastModified: Date.now() };
-                              })}
-                            />
-                          </label>
-                        </div>
 
-                        <div className="day-activities">
-                          <div className="day-activities-header">
-                            <h3>Activities</h3>
-                          </div>
-                          {(day.activities || []).length === 0 ? (
-                            <p className="empty-activities">No activities yet.</p>
-                          ) : (
-                            <div className="activity-list">
-                              {(day.activities || []).map((activity, activityIndex) => (
-                                <div key={activity.id} className="activity-row">
                                   <div className="activity-number">Activity {activityIndex + 1}</div>
                                   <div className="activity-fields">
                                     <label className="day-field">
@@ -2390,16 +2370,6 @@ function App() {
                     </div>
                   )}
                   {day.notes && <p><strong>Notes:</strong> {day.notes}</p>}
-                  {day.weatherLinks && (
-                    <div>
-                      <strong>Weather Links:</strong>
-                      <ul>
-                        {day.weatherLinks.split(/\n+/).map(link => link.trim()).filter(Boolean).map(link => (
-                          <li key={link}>{link}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
