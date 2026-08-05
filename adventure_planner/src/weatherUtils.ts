@@ -170,7 +170,7 @@ const buildWeatherDataUrl = (coords: { latitude: number; longitude: number }, st
   const safeStart = normalizeDateString(startDate);
   const safeEnd = normalizeDateString(endDate);
   const baseUrl = isDateInPast(safeEnd) ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
-  return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum&hourly=relative_humidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
+  return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum,cloudcover_mean,visibility_mean&hourly=temperature_2m,relativehumidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
 };
 
 export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
@@ -242,11 +242,19 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
   const humidity = humidityValues.length > 0 ? Math.round(humidityValues.reduce((sum: number, value: number) => sum + value, 0) / humidityValues.length) : undefined;
   const freezingLevel = freezingValues.length > 0 ? Math.round(freezingValues.reduce((sum: number, value: number) => sum + value, 0) / freezingValues.length) : undefined;
   const snowDepth = snowDepthValues.length > 0 ? Math.max(...snowDepthValues) : undefined;
+  const hourlyTemps = hourly.temperature_2m || [];
 
   const highLow = Object.fromEntries(
     ALTITUDES.map((altitude) => {
-      const high = maxTemp != null ? getAltTemp(maxTemp, altitude) : NaN;
-      const low = minTemp != null ? getAltTemp(minTemp, altitude) : NaN;
+      const altitudeTemps = hourlyTemps.length > 0
+        ? hourlyTemps.map((temp: number) => getAltTemp(temp, altitude))
+        : [
+            maxTemp != null ? getAltTemp(maxTemp, altitude) : NaN,
+            minTemp != null ? getAltTemp(minTemp, altitude) : NaN,
+          ];
+
+      const high = altitudeTemps.length > 0 ? Math.max(...altitudeTemps) : NaN;
+      const low = altitudeTemps.length > 0 ? Math.min(...altitudeTemps) : NaN;
       return [
         altitude,
         {
