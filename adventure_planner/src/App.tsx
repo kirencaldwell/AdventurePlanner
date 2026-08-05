@@ -351,11 +351,13 @@ const WeatherDayCard = ({
         </div>
       </>
     )}
-              {row.coords && (
-                <a key="mountain-forecast" href={mountainForecastSearchUrl(row.coords)} target="_blank" rel="noreferrer" className="weather-link">
-                  Mountain Forecast
-                </a>
-              )}
+    <div className="weather-card-external-links">
+      {(day?.peak || row.coords) && (
+        <a key="mountain-forecast" href={mountainForecastSearchUrl(row.coords, day?.peak)} target="_blank" rel="noreferrer" className="weather-link">
+          Mountain Forecast
+        </a>
+      )}
+    </div>
   </div>
 );
 
@@ -866,6 +868,16 @@ function App() {
     }));
   };
 
+  const updateTripDayElevation = (dayId: string, elevationFeet?: number) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      days: (trip.days || []).map(day =>
+        day.id === dayId ? { ...day, elevation: elevationFeet } : day
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
   const deleteTripDay = (dayId: string) => {
     updateCurrentTrip(trip => ({
       ...trip,
@@ -1119,7 +1131,7 @@ function App() {
   const openWeatherDetail = async (trip: Trip, forecastDate: string) => {
     const day = trip.days?.find((candidate) => candidate.location?.trim()) || trip.days?.[0];
     const location = day?.location || '';
-    const row = await fetchWeatherForDay(0, location, forecastDate);
+    const row = await fetchWeatherForDay(0, location, forecastDate, day?.elevation);
     setSelectedWeatherDetail({ isOpen: true, trip, row, day });
   };
 
@@ -1447,7 +1459,7 @@ function App() {
         const date = getDayDate(trip.startDate, i);
 
         try {
-          const weather = await fetchWeatherForDay(i, day.location, date);
+          const weather = await fetchWeatherForDay(i, day.location, date, day.elevation);
 
           if (weather.error) {
             return { ...trip, weatherStatus: 'Pending' as const, weatherData: {}, lastWeatherUpdate: Date.now() };
@@ -2030,6 +2042,31 @@ function App() {
                                   return { ...trip, days, lastModified: Date.now() };
                                 });
                               }}
+                            />
+                          </label>
+                          <label className="day-field">
+                            <span className="day-field-label">Elevation (ft)</span>
+                            <input
+                              type="number"
+                              placeholder="e.g. 3000"
+                              value={day.elevation ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                updateTripDayElevation(day.id, val);
+                              }}
+                            />
+                          </label>
+                          <label className="day-field">
+                            <span className="day-field-label">Peak (optional)</span>
+                            <input
+                              type="text"
+                              placeholder="e.g. Mount Rainier"
+                              value={day.peak || ''}
+                              onChange={(e) => updateCurrentTrip(trip => {
+                                const days = [...(trip.days || [])];
+                                days[index] = { ...days[index], peak: e.target.value };
+                                return { ...trip, days, lastModified: Date.now() };
+                              })}
                             />
                           </label>
                         </div>

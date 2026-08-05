@@ -39,6 +39,8 @@ export interface TripDay {
   description?: string;
   notes?: string;
   weatherLinks?: string;
+  elevation?: number; // elevation in feet (optional)
+  peak?: string; // optional peak name for mountain-forecast lookup
   activities?: TripActivity[];
 }
 

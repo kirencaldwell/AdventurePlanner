@@ -20,8 +20,11 @@ export interface WeatherRow {
   error?: string;
   weatherCode?: number; // Added to help check if stormy
   coords?: { latitude: number; longitude: number } | null;
+  elevationFeet?: number | undefined;
   aqi?: number;
 }
+
+export const DEFAULT_DAY_ELEVATION_FEET = 3000;
 
 export const ALTITUDES = [0, 3000, 6000, 10000] as const;
 export const LAPSE_RATE_C_PER_M = 6.5 / 1000;
@@ -174,15 +177,20 @@ const buildWeatherDataUrl = (coords: { latitude: number; longitude: number }, st
   return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum,cloudcover_mean,visibility_mean&hourly=temperature_2m,relativehumidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
 };
 
-export const mountainForecastSearchUrl = (coords?: { latitude: number; longitude: number } | null) => {
+export const mountainForecastSearchUrl = (coords?: { latitude: number; longitude: number } | null, peakName?: string | undefined) => {
+  // Prefer a peak name search if provided (users can paste exact peak names).
+  if (peakName && peakName.trim() !== '') {
+    return `https://www.mountain-forecast.com/search?q=${encodeURIComponent(peakName.trim())}`;
+  }
   if (!coords) return 'https://www.mountain-forecast.com/';
   const lat = coords.latitude.toFixed(4);
   const lon = coords.longitude.toFixed(4);
   return `https://www.mountain-forecast.com/search?q=${encodeURIComponent(`${lat},${lon}`)}`;
 };
 
-export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
+export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string, elevationFeet?: number): Promise<WeatherRow> => {
   const coords = await resolveLocationCoordinates(dayLocation);
+  const usedElevationFeet = typeof elevationFeet === 'number' && !Number.isNaN(elevationFeet) ? elevationFeet : DEFAULT_DAY_ELEVATION_FEET;
   if (!coords) {
     return {
       dayIndex,
@@ -301,6 +309,7 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     snowfall,
     weatherCode: summaryCode,
     coords: coords || null,
+    elevationFeet: usedElevationFeet,
     aqi: aqiVal,
   };
 };
