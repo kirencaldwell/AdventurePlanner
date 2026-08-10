@@ -2303,7 +2303,37 @@ function App() {
                   {activeCategory.items.map(item => (
                     <tr key={item.id}>
                       <td className="item-name">
-                        {item.name}
+                        <div className="item-name-text">
+                          <div className="item-name-title">{item.name}</div>
+                          {activeCategory.name === GROUP_GEAR_CATEGORY_NAME && (
+                            <div className="group-gear-summary">
+                              <span className="assignment-summary-label">For:</span>
+                              <span className="assignment-summary-value">
+                                {item.forPersonIds && item.forPersonIds.length > 0 ? (
+                                  item.forPersonIds
+                                    .map(id => currentTrip.people.find(p => p.id === id))
+                                    .filter((person): person is { id: string; name: string } => Boolean(person))
+                                    .map(person => (
+                                      <button
+                                        key={person.id}
+                                        type="button"
+                                        className="assignment-chip assignment-chip-clickable"
+                                        onClick={() => {
+                                          const nextIds = item.forPersonIds?.filter(id => id !== person.id) || [];
+                                          setItemForPeople(activeCategory.id, item.id, nextIds);
+                                        }}
+                                      >
+                                        {person.name}
+                                        <span className="assignment-chip-remove">×</span>
+                                      </button>
+                                    ))
+                                ) : (
+                                  <span className="assignment-chip assignment-chip-group">Group</span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                         <button
                           className="delete-item-btn"
                           onClick={() => deleteItem(activeCategory.id, item.id)}
@@ -2316,6 +2346,7 @@ function App() {
                         <>
                           <td>
                             <select
+                              className="assignment-select"
                               value={item.broughtByPersonId || ''}
                               onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'broughtByPersonId', e.target.value || undefined)}
                             >
@@ -2338,6 +2369,7 @@ function App() {
                           </td>
                           <td>
                             <select
+                              className="assignment-select assignment-multiple"
                               multiple
                               size={Math.min(4, currentTrip.people.length || 4)}
                               value={item.forPersonIds || []}
