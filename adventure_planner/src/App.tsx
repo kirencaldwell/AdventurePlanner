@@ -613,7 +613,7 @@ function App() {
 
         if (Array.isArray(data) && data.length > 0) {
           console.log('Dashboard load: found trips', data.length);
-          const mappedTrips: Trip[] = data.map(row => ({
+          const mappedTrips: Trip[] = data.map(row => normalizeTripCategories({
             id: row.id,
             name: row.name,
             people: row.people || [],
@@ -721,9 +721,32 @@ function App() {
     return () => clearTimeout(timeoutId);
   }, [trips, isInitialLoad, user]);
 
+  const normalizeTripCategories = (trip: Trip): Trip => {
+    const categories = trip.categories.map(cat => ({
+      ...cat,
+      isPermanent: cat.name === GROUP_GEAR_CATEGORY_NAME,
+    }));
+    const hasGroupGear = categories.some(cat => cat.name === GROUP_GEAR_CATEGORY_NAME);
+    if (hasGroupGear) {
+      return { ...trip, categories };
+    }
+    return {
+      ...trip,
+      categories: [
+        {
+          id: generateId(),
+          name: GROUP_GEAR_CATEGORY_NAME,
+          items: [],
+          isPermanent: true,
+        },
+        ...categories,
+      ],
+    };
+  };
+
   const createNewTrip = (name: string, userId = user?.id) => {
     if (!userId) return;
-    const newTrip: Trip = {
+    const newTrip: Trip = normalizeTripCategories({
       id: generateId(),
       name,
       people: [],
@@ -731,7 +754,6 @@ function App() {
         id: generateId(),
         name: cat,
         items: [],
-        isPermanent: cat === GROUP_GEAR_CATEGORY_NAME,
       })),
       startDate: '',
       days: [],
@@ -740,7 +762,7 @@ function App() {
       userId: userId,
       sharedWith: [],
       lastModified: Date.now(),
-    };
+    });
     setTrips(prev => [...prev, newTrip]);
     setCurrentTripId(newTrip.id);
     setView('trip-detail');
