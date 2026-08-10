@@ -397,9 +397,75 @@ button.danger {
   color: #2c3e50;
   width: 30%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.75rem;
+}
+
+.item-name-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.item-name-title {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.group-gear-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  color: #6c757d;
+  font-size: 0.85rem;
+}
+
+.assignment-summary-label {
+  font-weight: 700;
+  color: #34495e;
+}
+
+.assignment-summary-value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.assignment-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(93, 173, 226, 0.18);
+  color: #186fa5;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid rgba(93, 173, 226, 0.34);
+  cursor: pointer;
+}
+
+.assignment-chip:hover {
+  background: rgba(93, 173, 226, 0.26);
+}
+
+.assignment-chip-group {
+  background: rgba(46, 204, 113, 0.18);
+  color: #1e8449;
+  border-color: rgba(46, 204, 113, 0.34);
+  cursor: default;
+}
+
+.assignment-chip-remove {
+  margin-left: 0.4rem;
+  font-weight: 900;
+  color: rgba(30, 30, 30, 0.7);
+}
+
+.assignment-chip-clickable {
+  padding-right: 0.45rem;
 }
 
 .delete-item-btn {
@@ -411,13 +477,29 @@ button.danger {
 }
 
 select {
-  padding: 6px 12px;
-  border-radius: 4px;
-  border: 2px solid transparent;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #dfe4ea;
+  background: #fbfdff;
   font-weight: 600;
   cursor: pointer;
   outline: none;
   width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:focus {
+  border-color: #5dade2;
+  box-shadow: 0 0 0 4px rgba(116, 185, 255, 0.16);
+}
+
+.assignment-select {
+  min-width: 180px;
+}
+
+.assignment-multiple {
+  min-height: 90px;
+  max-height: 140px;
 }
 
 .tab-actions {
