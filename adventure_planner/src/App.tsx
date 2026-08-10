@@ -800,7 +800,7 @@ function App() {
             personStatuses: nextStatuses,
             broughtByPersonId: item.broughtByPersonId === personId ? undefined : item.broughtByPersonId,
             carriedByPersonId: item.carriedByPersonId === personId ? undefined : item.carriedByPersonId,
-            forPersonId: item.forPersonId === personId ? undefined : item.forPersonId,
+            forPersonIds: item.forPersonIds?.filter(id => id !== personId),
           };
         }),
       })),
@@ -1170,7 +1170,7 @@ function App() {
     }));
   };
 
-  const setItemAssignment = (categoryId: string, itemId: string, field: 'broughtByPersonId' | 'carriedByPersonId' | 'forPersonId', personId: string | undefined) => {
+  const setItemAssignment = (categoryId: string, itemId: string, field: 'broughtByPersonId' | 'carriedByPersonId', personId: string | undefined) => {
     updateCurrentTrip(trip => ({
       ...trip,
       categories: trip.categories.map(cat =>
@@ -1180,6 +1180,25 @@ function App() {
               items: cat.items.map(item =>
                 item.id === itemId
                   ? { ...item, [field]: personId }
+                  : item
+              ),
+            }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const setItemForPeople = (categoryId: string, itemId: string, personIds: string[]) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: cat.items.map(item =>
+                item.id === itemId
+                  ? { ...item, forPersonIds: personIds }
                   : item
               ),
             }
@@ -1271,7 +1290,7 @@ function App() {
             personStatuses,
             broughtByPersonId: item.broughtByPersonId,
             carriedByPersonId: item.carriedByPersonId,
-            forPersonId: item.forPersonId,
+            forPersonIds: item.forPersonIds,
           };
         });
 
@@ -1314,7 +1333,7 @@ function App() {
           personStatuses: {},
           broughtByPersonId: item.broughtByPersonId,
           carriedByPersonId: item.carriedByPersonId,
-          forPersonId: item.forPersonId,
+          forPersonIds: item.forPersonIds,
         }))
       })),
       startDate: currentTrip.startDate || '',
@@ -2319,10 +2338,14 @@ function App() {
                           </td>
                           <td>
                             <select
-                              value={item.forPersonId || ''}
-                              onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'forPersonId', e.target.value || undefined)}
+                              multiple
+                              size={Math.min(4, currentTrip.people.length || 4)}
+                              value={item.forPersonIds || []}
+                              onChange={(e) => {
+                                const selected = Array.from((e.target as HTMLSelectElement).selectedOptions).map(option => option.value);
+                                setItemForPeople(activeCategory.id, item.id, selected);
+                              }}
                             >
-                              <option value="">Group</option>
                               {currentTrip.people.map(person => (
                                 <option key={person.id} value={person.id}>{person.name}</option>
                               ))}

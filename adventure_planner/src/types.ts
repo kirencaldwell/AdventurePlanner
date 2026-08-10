@@ -17,7 +17,7 @@ export interface Item {
   personStatuses: Record<string, StatusId>; // personId -> statusId
   broughtByPersonId?: string;
   carriedByPersonId?: string;
-  forPersonId?: string;
+  forPersonIds?: string[];
 }
 
 export interface Category {
