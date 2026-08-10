@@ -3,7 +3,7 @@ import './App.css';
 import type { Trip, StatusId, TripActivity, TripDay } from './types';
 import type { StartingDayForecast } from './weatherUtils';
 import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
-import { DEFAULT_STATUSES, INITIAL_CATEGORIES } from './constants';
+import { DEFAULT_STATUSES, GROUP_GEAR_CATEGORY_NAME, INITIAL_CATEGORIES } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
 import { ShareModal } from './ShareModal';
@@ -730,7 +730,8 @@ function App() {
       categories: INITIAL_CATEGORIES.map(cat => ({
         id: generateId(),
         name: cat,
-        items: []
+        items: [],
+        isPermanent: cat === GROUP_GEAR_CATEGORY_NAME,
       })),
       startDate: '',
       days: [],
@@ -772,7 +773,13 @@ function App() {
         items: category.items.map(item => {
           const nextStatuses = { ...item.personStatuses };
           delete nextStatuses[personId];
-          return { ...item, personStatuses: nextStatuses };
+          return {
+            ...item,
+            personStatuses: nextStatuses,
+            broughtByPersonId: item.broughtByPersonId === personId ? undefined : item.broughtByPersonId,
+            carriedByPersonId: item.carriedByPersonId === personId ? undefined : item.carriedByPersonId,
+            forPersonId: item.forPersonId === personId ? undefined : item.forPersonId,
+          };
         }),
       })),
       lastModified: Date.now(),
@@ -1141,6 +1148,25 @@ function App() {
     }));
   };
 
+  const setItemAssignment = (categoryId: string, itemId: string, field: 'broughtByPersonId' | 'carriedByPersonId' | 'forPersonId', personId: string | undefined) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: cat.items.map(item =>
+                item.id === itemId
+                  ? { ...item, [field]: personId }
+                  : item
+              ),
+            }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
   const resetTab = (categoryId: string) => {
     if (!confirm('Are you sure you want to reset all item statuses for this tab?')) return;
 
@@ -1221,6 +1247,9 @@ function App() {
             id: generateId(),
             name: item.name,
             personStatuses,
+            broughtByPersonId: item.broughtByPersonId,
+            carriedByPersonId: item.carriedByPersonId,
+            forPersonId: item.forPersonId,
           };
         });
 
@@ -1257,7 +1286,14 @@ function App() {
       categories: currentTrip.categories.map(cat => ({
         ...cat,
         id: generateId(),
-        items: cat.items.map(item => ({ ...item, id: generateId(), personStatuses: {} }))
+        items: cat.items.map(item => ({
+          ...item,
+          id: generateId(),
+          personStatuses: {},
+          broughtByPersonId: item.broughtByPersonId,
+          carriedByPersonId: item.carriedByPersonId,
+          forPersonId: item.forPersonId,
+        }))
       })),
       startDate: currentTrip.startDate || '',
       days: currentTrip.days?.map(day => ({ ...day, id: generateId() })) || [],
@@ -1404,6 +1440,11 @@ function App() {
   };
 
   const deleteCategory = (id: string) => {
+    const category = currentTrip?.categories.find(cat => cat.id === id);
+    if (category?.isPermanent || category?.name === GROUP_GEAR_CATEGORY_NAME) {
+      alert('This tab cannot be deleted.');
+      return;
+    }
     if (!confirm('Are you sure you want to delete this tab and all its items?')) return;
     updateCurrentTrip(trip => ({
       ...trip,
@@ -2205,6 +2246,13 @@ function App() {
                 <thead>
                   <tr>
                     <th>Item</th>
+                    {activeCategory.name === GROUP_GEAR_CATEGORY_NAME && (
+                      <>
+                        <th>Brought by</th>
+                        <th>Carried by</th>
+                        <th>For</th>
+                      </>
+                    )}
                     {currentTrip.people.map(p => (
                       <th key={p.id}>{p.name}</th>
                     ))}
@@ -2223,6 +2271,43 @@ function App() {
                           ×
                         </button>
                       </td>
+                      {activeCategory.name === GROUP_GEAR_CATEGORY_NAME && (
+                        <>
+                          <td>
+                            <select
+                              value={item.broughtByPersonId || ''}
+                              onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'broughtByPersonId', e.target.value || undefined)}
+                            >
+                              <option value="">None</option>
+                              {currentTrip.people.map(person => (
+                                <option key={person.id} value={person.id}>{person.name}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={item.carriedByPersonId || ''}
+                              onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'carriedByPersonId', e.target.value || undefined)}
+                            >
+                              <option value="">None</option>
+                              {currentTrip.people.map(person => (
+                                <option key={person.id} value={person.id}>{person.name}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={item.forPersonId || ''}
+                              onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'forPersonId', e.target.value || undefined)}
+                            >
+                              <option value="">Group</option>
+                              {currentTrip.people.map(person => (
+                                <option key={person.id} value={person.id}>{person.name}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </>
+                      )}
                       {currentTrip.people.map(person => (
                         <td key={person.id}>
                           <select 

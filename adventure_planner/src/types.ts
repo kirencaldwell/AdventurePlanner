@@ -15,12 +15,16 @@ export interface Item {
   id: string;
   name: string;
   personStatuses: Record<string, StatusId>; // personId -> statusId
+  broughtByPersonId?: string;
+  carriedByPersonId?: string;
+  forPersonId?: string;
 }
 
 export interface Category {
   id: string;
   name: string;
   items: Item[];
+  isPermanent?: boolean;
 }
 
 export interface TripActivity {

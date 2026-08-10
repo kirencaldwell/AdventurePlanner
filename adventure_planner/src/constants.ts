@@ -10,7 +10,10 @@ export const DEFAULT_STATUSES: Status[] = [
   { id: 'need-to-buy', label: 'Need to buy', color: '#f39c12' },
 ];
 
+export const GROUP_GEAR_CATEGORY_NAME = 'Group Gear';
+
 export const INITIAL_CATEGORIES = [
+  GROUP_GEAR_CATEGORY_NAME,
   'Basic Gear',
   'Clothes',
   'Camping/Personal',
