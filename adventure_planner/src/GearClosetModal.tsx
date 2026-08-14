@@ -21,6 +21,9 @@ interface GearClosetModalProps {
     },
     saveToCloset: boolean
   ) => void;
+  /** When set, the modal is in "link" mode — updating an existing item row instead of adding a new one */
+  linkItemName?: string;
+  linkPersonName?: string;
 }
 
 export const GearClosetModal: React.FC<GearClosetModalProps> = ({
@@ -31,7 +34,10 @@ export const GearClosetModal: React.FC<GearClosetModalProps> = ({
   gearCloset,
   onSelectFromCloset,
   onAddNewCustomItem,
+  linkItemName,
+  linkPersonName,
 }) => {
+  const isLinkMode = !!linkItemName;
   const [activeTab, setActiveTab] = useState<'browse' | 'create'>(
     gearCloset.length > 0 ? 'browse' : 'create'
   );
@@ -107,8 +113,22 @@ export const GearClosetModal: React.FC<GearClosetModalProps> = ({
       <div className="closet-picker-modal" onClick={(e) => e.stopPropagation()}>
         <div className="closet-picker-header">
           <div className="closet-picker-title-row">
-            <h2>Add Item to Packing List</h2>
-            <span className="closet-picker-category-tag">{categoryName}</span>
+            {isLinkMode ? (
+              <div>
+                <h2>Link Gear Closet Item</h2>
+                <div className="closet-picker-link-context">
+                  <span className="closet-picker-category-tag">{linkItemName}</span>
+                  {linkPersonName && (
+                    <span className="closet-picker-person-tag">for {linkPersonName}</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                <h2>Add Item to Packing List</h2>
+                <span className="closet-picker-category-tag">{categoryName}</span>
+              </>
+            )}
           </div>
           <button type="button" className="closet-picker-close-btn" onClick={onClose}>
             ×
@@ -123,13 +143,15 @@ export const GearClosetModal: React.FC<GearClosetModalProps> = ({
           >
             📦 Choose from Gear Closet ({gearCloset.length})
           </button>
-          <button
-            type="button"
-            className={`closet-picker-tab-btn ${activeTab === 'create' ? 'active' : ''}`}
-            onClick={() => setActiveTab('create')}
-          >
-            ✏️ Create New Item
-          </button>
+          {!isLinkMode && (
+            <button
+              type="button"
+              className={`closet-picker-tab-btn ${activeTab === 'create' ? 'active' : ''}`}
+              onClick={() => setActiveTab('create')}
+            >
+              ✏️ Create New Item
+            </button>
+          )}
         </div>
 
         <div className="closet-picker-body">
@@ -212,12 +234,12 @@ export const GearClosetModal: React.FC<GearClosetModalProps> = ({
 
                         <button
                           type="button"
-                          className={`btn-add-to-list ${isAlreadyAdded ? 'already-added' : ''}`}
+                          className={`btn-add-to-list ${isAlreadyAdded && !isLinkMode ? 'already-added' : ''}`}
                           onClick={() => {
                             onSelectFromCloset(gearItem);
                           }}
                         >
-                          {isAlreadyAdded ? 'Add Another +' : '+ Add to Tab'}
+                          {isLinkMode ? '🔗 Link to Item' : isAlreadyAdded ? 'Add Another +' : '+ Add to Tab'}
                         </button>
                       </div>
                     );

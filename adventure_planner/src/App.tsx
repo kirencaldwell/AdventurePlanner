@@ -164,6 +164,72 @@ const getTripDateRange = (startDate: string | undefined, dayCount: number) => {
   return `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
 };
 
+// Convert any weight value to ounces for consistent summation
+const toOz = (weight: number | string | undefined, unit: string | undefined): number => {
+  const w = parseFloat(String(weight ?? ''));
+  if (!isFinite(w)) return 0;
+  switch ((unit || 'oz').toLowerCase()) {
+    case 'lb': return w * 16;
+    case 'kg': return w * 35.274;
+    case 'g':  return w * 0.035274;
+    default:   return w; // oz
+  }
+};
+
+// Format a weight in ounces to a human-readable string (auto-selects lb/oz)
+const formatWeight = (oz: number): string => {
+  if (oz === 0) return '0 oz';
+  if (oz >= 16) {
+    const lb = oz / 16;
+    return `${parseFloat(lb.toFixed(1))} lb`;
+  }
+  return `${parseFloat(oz.toFixed(1))} oz`;
+};
+
+interface PersonPackingStats {
+  personId: string;
+  packedCount: number;   // fully-packed + in-car
+  totalCount: number;    // all items not 'not-bringing'
+  packedPercent: number; // 0-100
+  plannedWeightOz: number; // total weight of non-'not-bringing' items
+}
+
+// Compute packing stats per person, optionally scoped to one category
+const calcPersonPackingStats = (
+  trip: Trip,
+  categoryId?: string
+): PersonPackingStats[] => {
+  const categories = categoryId
+    ? trip.categories.filter(c => c.id === categoryId)
+    : trip.categories;
+
+  return trip.people.map(person => {
+    let packedCount = 0;
+    let totalCount = 0;
+    let plannedWeightOz = 0;
+
+    for (const cat of categories) {
+      for (const item of cat.items) {
+        const status = item.personStatuses[person.id] || 'not-packed';
+        if (status === 'not-bringing') continue;
+        totalCount++;
+        if (status === 'fully-packed' || status === 'in-car') {
+          packedCount++;
+        }
+        plannedWeightOz += toOz(item.weight, item.weightUnit);
+      }
+    }
+
+    return {
+      personId: person.id,
+      packedCount,
+      totalCount,
+      packedPercent: totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0,
+      plannedWeightOz,
+    };
+  });
+};
+
 const getTripActivitySummary = (trip: Trip) => {
   const activities = (trip.days || []).flatMap(day => day.activities || []);
   const types = Array.from(new Set(activities.map(a => a.type)));
@@ -492,6 +558,9 @@ function App() {
   // Gear Closet picker modal state (for adding from closet to packing tab)
   const [closetPickerOpen, setClosetPickerOpen] = useState(false);
   const [closetPickerCategoryId, setClosetPickerCategoryId] = useState<string | null>(null);
+  // When set, the picker is in "link" mode: updates an existing item rather than adding a new row
+  const [closetPickerItemId, setClosetPickerItemId] = useState<string | null>(null);
+  const [closetPickerPersonId, setClosetPickerPersonId] = useState<string | null>(null);
 
   // Forecast data keyed by trip id (7-day dashboard)
   const [forecastData, setForecastData] = useState<Record<string, StartingDayForecast[]>>({});
@@ -803,6 +872,32 @@ function App() {
                   isGroupGear: false,
                 },
               ],
+            }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  // Link an existing packing list item to a Gear Closet item (updates weight/desc, no new row)
+  const linkItemFromCloset = (categoryId: string, itemId: string, gearItem: GearClosetItem) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: cat.items.map(it =>
+                it.id === itemId
+                  ? {
+                      ...it,
+                      weight: gearItem.weight,
+                      weightUnit: gearItem.weightUnit,
+                      description: gearItem.description ?? it.description,
+                      gearClosetItemId: gearItem.id,
+                    }
+                  : it
+              ),
             }
           : cat
       ),
@@ -2310,6 +2405,38 @@ function App() {
                 onChange={(e) => updateStartDate(e.target.value)}
               />
             </div>
+            {currentTrip.people.length > 0 && (() => {
+              const packingStats = calcPersonPackingStats(currentTrip);
+              return (
+                <div className="trip-packing-status">
+                  <h3 className="packing-status-heading">Packed Status</h3>
+                  <div className="packing-status-grid">
+                    {packingStats.map(stats => {
+                      const person = currentTrip.people.find(p => p.id === stats.personId);
+                      if (!person) return null;
+                      return (
+                        <div key={stats.personId} className="packing-status-card">
+                          <div className="packing-status-person-row">
+                            <span className="packing-status-name">{person.name}</span>
+                            <span className="packing-status-meta">
+                              {stats.packedCount}/{stats.totalCount} items &middot; {formatWeight(stats.plannedWeightOz)}
+                            </span>
+                          </div>
+                          <div className="packing-progress-track">
+                            <div
+                              className="packing-progress-fill"
+                              style={{ width: `${stats.packedPercent}%` }}
+                              title={`${stats.packedPercent}% packed`}
+                            />
+                          </div>
+                          <div className="packing-progress-label">{stats.packedPercent}% packed</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="trip-days">
               <div className="trip-days-header">
                 <h2>Trip Days</h2>
@@ -2576,9 +2703,18 @@ function App() {
                 <thead>
                   <tr>
                     <th>Item</th>
-                    {currentTrip.people.map(p => (
-                      <th key={p.id}>{p.name}</th>
-                    ))}
+                    {currentTrip.people.map(p => {
+                      const listStats = calcPersonPackingStats(currentTrip, activeCategory.id);
+                      const personStat = listStats.find(s => s.personId === p.id);
+                      return (
+                        <th key={p.id} className="person-col-header">
+                          <span className="person-col-name">{p.name}</span>
+                          {personStat && personStat.plannedWeightOz > 0 && (
+                            <span className="person-col-weight">{formatWeight(personStat.plannedWeightOz)}</span>
+                          )}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -2651,7 +2787,7 @@ function App() {
                         </button>
                       </td>
                       {currentTrip.people.map(person => (
-                        <td key={person.id}>
+                        <td key={person.id} className="person-status-cell">
                           <select 
                             value={item.personStatuses[person.id] || 'not-packed'}
                             onChange={(e) => updateStatus(activeCategory.id, item.id, person.id, e.target.value)}
@@ -2664,6 +2800,19 @@ function App() {
                               <option key={status.id} value={status.id}>{status.label}</option>
                             ))}
                           </select>
+                          <button
+                            type="button"
+                            className="cell-closet-btn"
+                            title={`Link gear closet item for ${person.name}`}
+                            onClick={() => {
+                              setClosetPickerCategoryId(activeCategory.id);
+                              setClosetPickerItemId(item.id);
+                              setClosetPickerPersonId(person.id);
+                              setClosetPickerOpen(true);
+                            }}
+                          >
+                            📦
+                          </button>
                         </td>
                       ))}
                     </tr>
@@ -2912,15 +3061,35 @@ function App() {
 
       {closetPickerOpen && closetPickerCategoryId && currentTrip && (() => {
         const pickerCategory = currentTrip.categories.find(c => c.id === closetPickerCategoryId);
+        const isLinkMode = !!closetPickerItemId;
+        const pickerItem = isLinkMode
+          ? pickerCategory?.items.find(i => i.id === closetPickerItemId)
+          : null;
+        const pickerPerson = isLinkMode && closetPickerPersonId
+          ? currentTrip.people.find(p => p.id === closetPickerPersonId)
+          : null;
+        const closePicker = () => {
+          setClosetPickerOpen(false);
+          setClosetPickerCategoryId(null);
+          setClosetPickerItemId(null);
+          setClosetPickerPersonId(null);
+        };
         return (
           <GearClosetModal
             isOpen={closetPickerOpen}
-            onClose={() => { setClosetPickerOpen(false); setClosetPickerCategoryId(null); }}
+            onClose={closePicker}
             categoryName={pickerCategory?.name || 'Packing List'}
             existingItems={pickerCategory?.items || []}
             gearCloset={gearCloset}
+            linkItemName={pickerItem?.name}
+            linkPersonName={pickerPerson?.name}
             onSelectFromCloset={(gearItem) => {
-              addItemFromCloset(closetPickerCategoryId, gearItem);
+              if (isLinkMode && closetPickerItemId) {
+                linkItemFromCloset(closetPickerCategoryId, closetPickerItemId, gearItem);
+                closePicker();
+              } else {
+                addItemFromCloset(closetPickerCategoryId, gearItem);
+              }
             }}
             onAddNewCustomItem={(itemData, saveToCloset) => {
               addCustomItemToList(closetPickerCategoryId, itemData, saveToCloset);
