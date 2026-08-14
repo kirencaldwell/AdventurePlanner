@@ -13,7 +13,6 @@ export const DEFAULT_STATUSES: Status[] = [
 export const GROUP_GEAR_CATEGORY_NAME = 'Group Gear';
 
 export const INITIAL_CATEGORIES = [
-  GROUP_GEAR_CATEGORY_NAME,
   'Basic Gear',
   'Clothes',
   'Camping/Personal',

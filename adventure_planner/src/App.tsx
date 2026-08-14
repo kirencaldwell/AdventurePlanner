@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
-import type { Trip, StatusId, TripActivity, TripDay } from './types';
+import type { Trip, StatusId, TripActivity, TripDay, Item, Category } from './types';
 import type { StartingDayForecast } from './weatherUtils';
 import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
 import { DEFAULT_STATUSES, GROUP_GEAR_CATEGORY_NAME, INITIAL_CATEGORIES } from './constants';
@@ -723,25 +723,65 @@ function App() {
   }, [trips, isInitialLoad, user]);
 
   const normalizeTripCategories = (trip: Trip): Trip => {
-    const categories = trip.categories.map(cat => ({
-      ...cat,
-      isPermanent: cat.name === GROUP_GEAR_CATEGORY_NAME,
+    const rawCategories = trip.categories || [];
+    let groupGearItems: Item[] = [];
+
+    // Migrate any legacy 'Group Gear' category items into Basic Gear, then remove the tab
+    const filteredCategories = rawCategories.filter(cat => {
+      if (cat.name === 'Group Gear' || cat.name === GROUP_GEAR_CATEGORY_NAME) {
+        if (cat.items && cat.items.length > 0) {
+          groupGearItems = [
+            ...groupGearItems,
+            ...cat.items.map(it => ({
+              ...it,
+              isGroupGear: true,
+              personStatuses: it.personStatuses || {},
+            })),
+          ];
+        }
+        return false;
+      }
+      return true;
+    });
+
+    let finalCategories: Category[] = filteredCategories.map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      isPermanent: false,
+      items: (cat.items || []).map(item => ({
+        ...item,
+        personStatuses: item.personStatuses || {},
+      })),
     }));
-    const hasGroupGear = categories.some(cat => cat.name === GROUP_GEAR_CATEGORY_NAME);
-    if (hasGroupGear) {
-      return { ...trip, categories };
+
+    if (groupGearItems.length > 0) {
+      const basicGearCat = finalCategories.find(c => c.name.toLowerCase() === 'basic gear');
+      if (basicGearCat) {
+        basicGearCat.items = [...basicGearCat.items, ...groupGearItems];
+      } else if (finalCategories.length > 0) {
+        finalCategories[0].items = [...finalCategories[0].items, ...groupGearItems];
+      } else {
+        finalCategories.push({
+          id: generateId(),
+          name: 'Basic Gear',
+          items: groupGearItems,
+          isPermanent: false,
+        });
+      }
     }
+
+    if (finalCategories.length === 0) {
+      finalCategories = INITIAL_CATEGORIES.map(cat => ({
+        id: generateId(),
+        name: cat,
+        items: [],
+        isPermanent: false,
+      }));
+    }
+
     return {
       ...trip,
-      categories: [
-        {
-          id: generateId(),
-          name: GROUP_GEAR_CATEGORY_NAME,
-          items: [],
-          isPermanent: true,
-        },
-        ...categories,
-      ],
+      categories: finalCategories,
     };
   };
 
@@ -779,9 +819,25 @@ function App() {
 
   const addPerson = (name: string) => {
     if (!name.trim()) return;
+    const newPersonId = generateId();
     updateCurrentTrip(trip => ({
       ...trip,
-      people: [...trip.people, { id: generateId(), name }],
+      people: [...trip.people, { id: newPersonId, name }],
+      categories: trip.categories.map(category => ({
+        ...category,
+        items: category.items.map(item => {
+          if (item.isGroupGear && item.carriedByPersonId && item.carriedByPersonId !== newPersonId) {
+            return {
+              ...item,
+              personStatuses: {
+                ...item.personStatuses,
+                [newPersonId]: 'not-bringing',
+              },
+            };
+          }
+          return item;
+        }),
+      })),
       lastModified: Date.now(),
     }));
   };
@@ -816,7 +872,7 @@ function App() {
       ...trip,
       categories: trip.categories.map(cat => 
         cat.id === categoryId 
-          ? { ...cat, items: [...cat.items, { id: generateId(), name, personStatuses: {} }] }
+          ? { ...cat, items: [...cat.items, { id: generateId(), name, personStatuses: {}, isGroupGear: false }] }
           : cat
       ),
       lastModified: Date.now(),
@@ -1172,40 +1228,87 @@ function App() {
     }));
   };
 
-  const setItemAssignment = (categoryId: string, itemId: string, field: 'broughtByPersonId' | 'carriedByPersonId', personId: string | undefined) => {
+  const toggleGroupGear = (categoryId: string, itemId: string, isGroupGear: boolean) => {
     updateCurrentTrip(trip => ({
       ...trip,
-      categories: trip.categories.map(cat =>
-        cat.id === categoryId
-          ? {
-              ...cat,
-              items: cat.items.map(item =>
-                item.id === itemId
-                  ? { ...item, [field]: personId }
-                  : item
-              ),
+      categories: trip.categories.map(cat => {
+        if (cat.id !== categoryId) return cat;
+        return {
+          ...cat,
+          items: cat.items.map(item => {
+            if (item.id !== itemId) return item;
+
+            if (isGroupGear) {
+              const updatedStatuses = { ...item.personStatuses };
+              if (item.carriedByPersonId) {
+                trip.people.forEach(person => {
+                  if (person.id === item.carriedByPersonId) {
+                    if (updatedStatuses[person.id] === 'not-bringing' || !updatedStatuses[person.id]) {
+                      updatedStatuses[person.id] = 'not-packed';
+                    }
+                  } else {
+                    updatedStatuses[person.id] = 'not-bringing';
+                  }
+                });
+              }
+              return {
+                ...item,
+                isGroupGear: true,
+                personStatuses: updatedStatuses,
+              };
+            } else {
+              return {
+                ...item,
+                isGroupGear: false,
+                broughtByPersonId: undefined,
+                carriedByPersonId: undefined,
+              };
             }
-          : cat
-      ),
+          }),
+        };
+      }),
       lastModified: Date.now(),
     }));
   };
 
-  const setItemForPeople = (categoryId: string, itemId: string, personIds: string[]) => {
+  const setItemAssignment = (categoryId: string, itemId: string, field: 'broughtByPersonId' | 'carriedByPersonId', personId: string | undefined) => {
     updateCurrentTrip(trip => ({
       ...trip,
-      categories: trip.categories.map(cat =>
-        cat.id === categoryId
-          ? {
-              ...cat,
-              items: cat.items.map(item =>
-                item.id === itemId
-                  ? { ...item, forPersonIds: personIds }
-                  : item
-              ),
+      categories: trip.categories.map(cat => {
+        if (cat.id !== categoryId) return cat;
+        return {
+          ...cat,
+          items: cat.items.map(item => {
+            if (item.id !== itemId) return item;
+
+            if (field === 'carriedByPersonId') {
+              const updatedStatuses = { ...item.personStatuses };
+              if (personId) {
+                // Set the carrier to not-packed if previously not-bringing or unset
+                if (updatedStatuses[personId] === 'not-bringing' || !updatedStatuses[personId]) {
+                  updatedStatuses[personId] = 'not-packed';
+                }
+                // Automatically set all other people on the trip to 'not-bringing'
+                trip.people.forEach(person => {
+                  if (person.id !== personId) {
+                    updatedStatuses[person.id] = 'not-bringing';
+                  }
+                });
+              }
+              return {
+                ...item,
+                carriedByPersonId: personId,
+                personStatuses: updatedStatuses,
+              };
             }
-          : cat
-      ),
+
+            return {
+              ...item,
+              [field]: personId,
+            };
+          }),
+        };
+      }),
       lastModified: Date.now(),
     }));
   };
@@ -1290,6 +1393,7 @@ function App() {
             id: generateId(),
             name: item.name,
             personStatuses,
+            isGroupGear: item.isGroupGear,
             broughtByPersonId: item.broughtByPersonId,
             carriedByPersonId: item.carriedByPersonId,
             forPersonIds: item.forPersonIds,
@@ -1333,6 +1437,7 @@ function App() {
           ...item,
           id: generateId(),
           personStatuses: {},
+          isGroupGear: item.isGroupGear,
           broughtByPersonId: item.broughtByPersonId,
           carriedByPersonId: item.carriedByPersonId,
           forPersonIds: item.forPersonIds,
@@ -1484,17 +1589,14 @@ function App() {
 
   const deleteCategory = (id: string) => {
     const category = currentTrip?.categories.find(cat => cat.id === id);
-    if (category?.isPermanent || category?.name === GROUP_GEAR_CATEGORY_NAME) {
-      alert('This tab cannot be deleted.');
-      return;
-    }
-    if (!confirm('Are you sure you want to delete this tab and all its items?')) return;
+    if (!category) return;
+    if (!confirm(`Are you sure you want to delete "${category.name}" and all its items?`)) return;
     updateCurrentTrip(trip => ({
       ...trip,
       categories: trip.categories.filter(cat => cat.id !== id),
       lastModified: Date.now(),
     }));
-    setActiveTab('weather');
+    setActiveTab('trip');
   };
 
   const refreshAllWeather = async (force = false) => {
@@ -2289,13 +2391,6 @@ function App() {
                 <thead>
                   <tr>
                     <th>Item</th>
-                    {activeCategory.name === GROUP_GEAR_CATEGORY_NAME && (
-                      <>
-                        <th>Brought by</th>
-                        <th>Carried by</th>
-                        <th>For</th>
-                      </>
-                    )}
                     {currentTrip.people.map(p => (
                       <th key={p.id}>{p.name}</th>
                     ))}
@@ -2303,36 +2398,54 @@ function App() {
                 </thead>
                 <tbody>
                   {activeCategory.items.map(item => (
-                    <tr key={item.id}>
+                    <tr key={item.id} className={item.isGroupGear ? 'group-gear-row' : ''}>
                       <td className="item-name">
                         <div className="item-name-text">
-                          <div className="item-name-title">{item.name}</div>
-                          {activeCategory.name === GROUP_GEAR_CATEGORY_NAME && (
-                            <div className="group-gear-summary">
-                              <span className="assignment-summary-label">For:</span>
-                              <span className="assignment-summary-value">
-                                {item.forPersonIds && item.forPersonIds.length > 0 ? (
-                                  item.forPersonIds
-                                    .map(id => currentTrip.people.find(p => p.id === id))
-                                    .filter((person): person is { id: string; name: string } => Boolean(person))
-                                    .map(person => (
-                                      <button
-                                        key={person.id}
-                                        type="button"
-                                        className="assignment-chip assignment-chip-clickable"
-                                        onClick={() => {
-                                          const nextIds = item.forPersonIds?.filter(id => id !== person.id) || [];
-                                          setItemForPeople(activeCategory.id, item.id, nextIds);
-                                        }}
-                                      >
-                                        {person.name}
-                                        <span className="assignment-chip-remove">×</span>
-                                      </button>
-                                    ))
-                                ) : (
-                                  <span className="assignment-chip assignment-chip-group">Group</span>
-                                )}
-                              </span>
+                          <div className="item-name-title-row">
+                            <span className="item-name-title">{item.name}</span>
+                          </div>
+
+                          <div className="group-gear-toggle-container">
+                            <label className={`group-gear-checkbox-label ${item.isGroupGear ? 'checked' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.isGroupGear)}
+                                onChange={(e) => toggleGroupGear(activeCategory.id, item.id, e.target.checked)}
+                              />
+                              <span className="group-gear-checkbox-text">Group Gear</span>
+                            </label>
+                          </div>
+
+                          {item.isGroupGear && (
+                            <div className="group-gear-fields">
+                              <div className="group-gear-field">
+                                <label htmlFor={`brought-by-${item.id}`}>Brought by:</label>
+                                <select
+                                  id={`brought-by-${item.id}`}
+                                  className="group-gear-select"
+                                  value={item.broughtByPersonId || ''}
+                                  onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'broughtByPersonId', e.target.value || undefined)}
+                                >
+                                  <option value="">None</option>
+                                  {currentTrip.people.map(person => (
+                                    <option key={person.id} value={person.id}>{person.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="group-gear-field">
+                                <label htmlFor={`carried-by-${item.id}`}>Carried by:</label>
+                                <select
+                                  id={`carried-by-${item.id}`}
+                                  className="group-gear-select"
+                                  value={item.carriedByPersonId || ''}
+                                  onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'carriedByPersonId', e.target.value || undefined)}
+                                >
+                                  <option value="">None</option>
+                                  {currentTrip.people.map(person => (
+                                    <option key={person.id} value={person.id}>{person.name}</option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -2344,49 +2457,6 @@ function App() {
                           ×
                         </button>
                       </td>
-                      {activeCategory.name === GROUP_GEAR_CATEGORY_NAME && (
-                        <>
-                          <td>
-                            <select
-                              className="assignment-select"
-                              value={item.broughtByPersonId || ''}
-                              onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'broughtByPersonId', e.target.value || undefined)}
-                            >
-                              <option value="">None</option>
-                              {currentTrip.people.map(person => (
-                                <option key={person.id} value={person.id}>{person.name}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            <select
-                              value={item.carriedByPersonId || ''}
-                              onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'carriedByPersonId', e.target.value || undefined)}
-                            >
-                              <option value="">None</option>
-                              {currentTrip.people.map(person => (
-                                <option key={person.id} value={person.id}>{person.name}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            <select
-                              className="assignment-select assignment-multiple"
-                              multiple
-                              size={Math.min(4, currentTrip.people.length || 4)}
-                              value={item.forPersonIds || []}
-                              onChange={(e) => {
-                                const selected = Array.from((e.target as HTMLSelectElement).selectedOptions).map(option => option.value);
-                                setItemForPeople(activeCategory.id, item.id, selected);
-                              }}
-                            >
-                              {currentTrip.people.map(person => (
-                                <option key={person.id} value={person.id}>{person.name}</option>
-                              ))}
-                            </select>
-                          </td>
-                        </>
-                      )}
                       {currentTrip.people.map(person => (
                         <td key={person.id}>
                           <select 
