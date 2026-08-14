@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
-import type { Trip, StatusId, TripActivity, TripDay, Item, Category } from './types';
+import type { Trip, StatusId, TripActivity, TripDay, Item, Category, GearClosetItem } from './types';
 import type { StartingDayForecast } from './weatherUtils';
 import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
-import { DEFAULT_STATUSES, GROUP_GEAR_CATEGORY_NAME, INITIAL_CATEGORIES } from './constants';
+import { DEFAULT_STATUSES, GROUP_GEAR_CATEGORY_NAME, INITIAL_CATEGORIES, SAMPLE_GEAR_CLOSET_ITEMS } from './constants';
 import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
 import { ShareModal } from './ShareModal';
 import LocationMapPicker from './LocationMapPicker';
 import { Analytics } from "@vercel/analytics/react";
 import type { User } from '@supabase/supabase-js';
+import { GearClosetView } from './GearCloset';
+import { GearClosetModal } from './GearClosetModal';
 
 
 const generateId = () => {
@@ -97,14 +99,14 @@ const STORAGE_KEYS = {
   activeTab: 'adventure-planner-active-tab',
 };
 
-const getStoredViewState = (): { view: 'dashboard' | 'trip-detail'; currentTripId: string | null; activeTab: string } | null => {
+const getStoredViewState = (): { view: 'dashboard' | 'trip-detail' | 'gear-closet'; currentTripId: string | null; activeTab: string } | null => {
   if (typeof window === 'undefined') return null;
   try {
     const savedView = window.sessionStorage.getItem(STORAGE_KEYS.view);
     const savedTripId = window.sessionStorage.getItem(STORAGE_KEYS.currentTripId);
     const savedActiveTab = window.sessionStorage.getItem(STORAGE_KEYS.activeTab);
     return {
-      view: savedView === 'trip-detail' ? 'trip-detail' : 'dashboard',
+      view: savedView === 'trip-detail' ? 'trip-detail' : savedView === 'gear-closet' ? 'gear-closet' : 'dashboard',
       currentTripId: savedTripId || null,
       activeTab: savedActiveTab || 'trip',
     };
@@ -473,8 +475,9 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [gearCloset, setGearCloset] = useState<GearClosetItem[]>([]);
   const [currentTripId, setCurrentTripId] = useState<string | null>(() => getStoredViewState()?.currentTripId ?? null);
-  const [view, setView] = useState<'dashboard' | 'trip-detail'>(() => getStoredViewState()?.view ?? 'dashboard');
+  const [view, setView] = useState<'dashboard' | 'trip-detail' | 'gear-closet'>(() => getStoredViewState()?.view ?? 'dashboard');
   const [activeTab, setActiveTab] = useState<string>(() => getStoredViewState()?.activeTab ?? 'trip');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [historyInitialized, setHistoryInitialized] = useState(false);
@@ -485,6 +488,10 @@ function App() {
   const [hasForcedDashboard, setHasForcedDashboard] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
+
+  // Gear Closet picker modal state (for adding from closet to packing tab)
+  const [closetPickerOpen, setClosetPickerOpen] = useState(false);
+  const [closetPickerCategoryId, setClosetPickerCategoryId] = useState<string | null>(null);
 
   // Forecast data keyed by trip id (7-day dashboard)
   const [forecastData, setForecastData] = useState<Record<string, StartingDayForecast[]>>({});
@@ -721,6 +728,127 @@ function App() {
 
     return () => clearTimeout(timeoutId);
   }, [trips, isInitialLoad, user]);
+
+  // Load gear closet from localStorage (keyed per user)
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const stored = localStorage.getItem(`gear-closet-${user.id}`);
+      if (stored) {
+        const parsed = JSON.parse(stored) as GearClosetItem[];
+        setGearCloset(Array.isArray(parsed) ? parsed : []);
+      }
+    } catch {
+      // ignore
+    }
+  }, [user]);
+
+  // Save gear closet to localStorage on change
+  useEffect(() => {
+    if (!user || isInitialLoad) return;
+    try {
+      localStorage.setItem(`gear-closet-${user.id}`, JSON.stringify(gearCloset));
+    } catch {
+      // ignore
+    }
+  }, [gearCloset, user, isInitialLoad]);
+
+  // Gear Closet CRUD handlers
+  const addGearClosetItem = (item: Omit<GearClosetItem, 'id' | 'lastModified'>) => {
+    const newItem: GearClosetItem = {
+      ...item,
+      id: generateId(),
+      userId: user?.id,
+      lastModified: Date.now(),
+    };
+    setGearCloset(prev => [...prev, newItem]);
+  };
+
+  const updateGearClosetItem = (id: string, updates: Partial<GearClosetItem>) => {
+    setGearCloset(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+  };
+
+  const deleteGearClosetItem = (id: string) => {
+    setGearCloset(prev => prev.filter(item => item.id !== id));
+  };
+
+  const addSampleGearItems = () => {
+    const newItems: GearClosetItem[] = SAMPLE_GEAR_CLOSET_ITEMS.map(sample => ({
+      ...sample,
+      id: generateId(),
+      userId: user?.id,
+      lastModified: Date.now(),
+    }));
+    setGearCloset(prev => [...prev, ...newItems]);
+  };
+
+  // Add item from Gear Closet to packing list tab
+  const addItemFromCloset = (categoryId: string, gearItem: GearClosetItem) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: [
+                ...cat.items,
+                {
+                  id: generateId(),
+                  name: gearItem.name,
+                  description: gearItem.description,
+                  weight: gearItem.weight,
+                  weightUnit: gearItem.weightUnit,
+                  gearClosetItemId: gearItem.id,
+                  personStatuses: {},
+                  isGroupGear: false,
+                },
+              ],
+            }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  // Add a new custom item to packing list (optionally save to closet too)
+  const addCustomItemToList = (
+    categoryId: string,
+    itemData: { name: string; description?: string; weight?: number; weightUnit?: string; category?: string },
+    saveToCloset: boolean
+  ) => {
+    if (saveToCloset) {
+      addGearClosetItem({
+        name: itemData.name,
+        description: itemData.description,
+        weight: itemData.weight,
+        weightUnit: itemData.weightUnit,
+        category: itemData.category,
+      });
+    }
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: [
+                ...cat.items,
+                {
+                  id: generateId(),
+                  name: itemData.name,
+                  description: itemData.description,
+                  weight: itemData.weight,
+                  weightUnit: itemData.weightUnit,
+                  personStatuses: {},
+                  isGroupGear: false,
+                },
+              ],
+            }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
 
   const normalizeTripCategories = (trip: Trip): Trip => {
     const rawCategories = trip.categories || [];
@@ -1709,9 +1837,55 @@ function App() {
     return <AuthScreen />;
   }
 
+  // Global nav — shown on dashboard and gear-closet views
+  const GlobalNav = () => (
+    <nav className="global-app-nav">
+      <div className="nav-brand" onClick={() => setView('dashboard')}>
+        <span className="brand-logo">🏔️</span>
+        <span className="brand-name">Adventure Planner</span>
+      </div>
+      <div className="nav-links">
+        <button
+          type="button"
+          className={`nav-link-btn ${view === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setView('dashboard')}
+        >
+          🗺️ Trips
+        </button>
+        <button
+          type="button"
+          className={`nav-link-btn ${view === 'gear-closet' ? 'active' : ''}`}
+          onClick={() => setView('gear-closet')}
+        >
+          📦 Gear Closet
+        </button>
+      </div>
+      <div className="nav-user-section">
+        <span className="user-email-text">{user.email}</span>
+        <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
+      </div>
+    </nav>
+  );
+
+  if (view === 'gear-closet') {
+    return (
+      <>
+        <GlobalNav />
+        <GearClosetView
+          items={gearCloset}
+          onAddItem={addGearClosetItem}
+          onUpdateItem={updateGearClosetItem}
+          onDeleteItem={deleteGearClosetItem}
+          onAddSampleItems={addSampleGearItems}
+        />
+      </>
+    );
+  }
+
   if (view === 'dashboard') {
     return (
       <>
+        <GlobalNav />
         <TripDashboard
           trips={trips}
           onViewTrip={(id) => { setCurrentTripId(id); setView('trip-detail'); }}
@@ -2352,7 +2526,7 @@ function App() {
               <div className="item-input">
                 <input 
                   type="text" 
-                  placeholder="Add item..." 
+                  placeholder="Quick add item..." 
                   value={newItemDrafts[activeCategory.id] || ''}
                   onChange={(e) => {
                     setNewItemDrafts(prev => ({
@@ -2383,6 +2557,17 @@ function App() {
                 >
                   Add
                 </button>
+                <button
+                  type="button"
+                  className="add-from-closet-btn"
+                  onClick={() => {
+                    setClosetPickerCategoryId(activeCategory.id);
+                    setClosetPickerOpen(true);
+                  }}
+                  title="Choose from Gear Closet"
+                >
+                  📦 Gear Closet
+                </button>
               </div>
             </div>
 
@@ -2403,7 +2588,15 @@ function App() {
                         <div className="item-name-text">
                           <div className="item-name-title-row">
                             <span className="item-name-title">{item.name}</span>
+                            {(item.weight !== undefined && item.weight !== null && item.weight !== '') && (
+                              <span className="item-weight-pill">
+                                ⚖️ {item.weight} {item.weightUnit || 'oz'}
+                              </span>
+                            )}
                           </div>
+                          {item.description && (
+                            <div className="item-desc-text">{item.description}</div>
+                          )}
 
                           <div className="group-gear-toggle-container">
                             <label className={`group-gear-checkbox-label ${item.isGroupGear ? 'checked' : ''}`}>
@@ -2715,6 +2908,25 @@ function App() {
             onClose={() => setMapPickerDayId(null)}
           />
         ) : null;
+      })()}
+
+      {closetPickerOpen && closetPickerCategoryId && currentTrip && (() => {
+        const pickerCategory = currentTrip.categories.find(c => c.id === closetPickerCategoryId);
+        return (
+          <GearClosetModal
+            isOpen={closetPickerOpen}
+            onClose={() => { setClosetPickerOpen(false); setClosetPickerCategoryId(null); }}
+            categoryName={pickerCategory?.name || 'Packing List'}
+            existingItems={pickerCategory?.items || []}
+            gearCloset={gearCloset}
+            onSelectFromCloset={(gearItem) => {
+              addItemFromCloset(closetPickerCategoryId, gearItem);
+            }}
+            onAddNewCustomItem={(itemData, saveToCloset) => {
+              addCustomItemToList(closetPickerCategoryId, itemData, saveToCloset);
+            }}
+          />
+        );
       })()}
 
     </div>
