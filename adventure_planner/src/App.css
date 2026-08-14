@@ -412,6 +412,11 @@ button.danger {
 }
 
 .person-status-cell {
+  vertical-align: top;
+  min-width: 140px;
+}
+
+.cell-content-wrapper {
   display: flex;
   flex-direction: column;
   align-items: stretch;

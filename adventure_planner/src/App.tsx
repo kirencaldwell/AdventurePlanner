@@ -2811,52 +2811,54 @@ function App() {
                       </td>
                       {currentTrip.people.map(person => (
                         <td key={person.id} className="person-status-cell">
-                          <select 
-                            value={item.personStatuses[person.id] || 'not-packed'}
-                            onChange={(e) => updateStatus(activeCategory.id, item.id, person.id, e.target.value)}
-                            style={{ 
-                              backgroundColor: DEFAULT_STATUSES.find(s => s.id === (item.personStatuses[person.id] || 'not-packed'))?.color + '44',
-                              borderColor: DEFAULT_STATUSES.find(s => s.id === (item.personStatuses[person.id] || 'not-packed'))?.color
-                            }}
-                          >
-                            {DEFAULT_STATUSES.map(status => (
-                              <option key={status.id} value={status.id}>{status.label}</option>
-                            ))}
-                          </select>
-                          {item.personGearItems?.[person.id] && (
-                            <div className="cell-linked-gear">
-                              <span className="cell-linked-gear-name" title={item.personGearItems[person.id].description}>
-                                🏷️ {item.personGearItems[person.id].name}
-                              </span>
-                              <span className="cell-linked-gear-weight">
-                                ⚖️ {item.personGearItems[person.id].weight} {item.personGearItems[person.id].weightUnit || 'oz'}
-                              </span>
-                            </div>
-                          )}
-                          <div className="cell-action-row">
-                            <button
-                              type="button"
-                              className="cell-closet-btn"
-                              title={item.personGearItems?.[person.id] ? `Change gear closet item for ${person.name}` : `Link gear closet item for ${person.name}`}
-                              onClick={() => {
-                                setClosetPickerCategoryId(activeCategory.id);
-                                setClosetPickerItemId(item.id);
-                                setClosetPickerPersonId(person.id);
-                                setClosetPickerOpen(true);
+                          <div className="cell-content-wrapper">
+                            <select 
+                              value={item.personStatuses[person.id] || 'not-packed'}
+                              onChange={(e) => updateStatus(activeCategory.id, item.id, person.id, e.target.value)}
+                              style={{ 
+                                backgroundColor: DEFAULT_STATUSES.find(s => s.id === (item.personStatuses[person.id] || 'not-packed'))?.color + '44',
+                                borderColor: DEFAULT_STATUSES.find(s => s.id === (item.personStatuses[person.id] || 'not-packed'))?.color
                               }}
                             >
-                              {item.personGearItems?.[person.id] ? '🔄 Change' : '📦 Link Gear'}
-                            </button>
+                              {DEFAULT_STATUSES.map(status => (
+                                <option key={status.id} value={status.id}>{status.label}</option>
+                              ))}
+                            </select>
                             {item.personGearItems?.[person.id] && (
+                              <div className="cell-linked-gear">
+                                <span className="cell-linked-gear-name" title={item.personGearItems[person.id].description}>
+                                  🏷️ {item.personGearItems[person.id].name}
+                                </span>
+                                <span className="cell-linked-gear-weight">
+                                  ⚖️ {item.personGearItems[person.id].weight} {item.personGearItems[person.id].weightUnit || 'oz'}
+                                </span>
+                              </div>
+                            )}
+                            <div className="cell-action-row">
                               <button
                                 type="button"
-                                className="cell-unlink-btn"
-                                title="Remove link to gear closet item"
-                                onClick={() => removePersonGearLink(activeCategory.id, item.id, person.id)}
+                                className="cell-closet-btn"
+                                title={item.personGearItems?.[person.id] ? `Change gear closet item for ${person.name}` : `Link gear closet item for ${person.name}`}
+                                onClick={() => {
+                                  setClosetPickerCategoryId(activeCategory.id);
+                                  setClosetPickerItemId(item.id);
+                                  setClosetPickerPersonId(person.id);
+                                  setClosetPickerOpen(true);
+                                }}
                               >
-                                ✕
+                                {item.personGearItems?.[person.id] ? '🔄 Change' : '📦 Link Gear'}
                               </button>
-                            )}
+                              {item.personGearItems?.[person.id] && (
+                                <button
+                                  type="button"
+                                  className="cell-unlink-btn"
+                                  title="Remove link to gear closet item"
+                                  onClick={() => removePersonGearLink(activeCategory.id, item.id, person.id)}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </td>
                       ))}
