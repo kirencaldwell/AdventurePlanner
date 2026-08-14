@@ -704,6 +704,7 @@ function App() {
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
         debrief_discussions: t.debriefDiscussions || [],
+        debrief_strava_embeds: t.debriefStravaEmbeds || [],
         user_id: t.userId || user.id,
         shared_with: t.sharedWith || [],
         last_modified: t.lastModified
@@ -759,6 +760,7 @@ function App() {
       days: [],
       caltopoUrl: '',
       debriefDiscussions: [],
+      debriefStravaEmbeds: [],
       userId: userId,
       sharedWith: [],
       lastModified: Date.now(),
