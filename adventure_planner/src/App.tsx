@@ -2073,6 +2073,7 @@ function App() {
 
   return (
     <div className="app-container">
+      <GlobalNav />
       <header className="trip-header">
         <div className="user-profile-bar">
           <span className="user-email">Logged in as: <strong>{user.email}</strong></span>
