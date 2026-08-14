@@ -395,7 +395,8 @@ button.danger {
 .item-name {
   font-weight: 600;
   color: #2c3e50;
-  width: 30%;
+  min-width: 240px;
+  width: 32%;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -407,11 +408,114 @@ button.danger {
   flex-direction: column;
   gap: 0.35rem;
   min-width: 0;
+  flex: 1;
+}
+
+.item-name-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .item-name-title {
   font-size: 1rem;
   line-height: 1.4;
+}
+
+.group-gear-toggle-container {
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.group-gear-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  transition: all 0.15s ease;
+  user-select: none;
+  width: fit-content;
+}
+
+.group-gear-checkbox-label:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.group-gear-checkbox-label.checked {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #7dd3fc;
+}
+
+.group-gear-checkbox-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: #0284c7;
+  margin: 0;
+}
+
+.group-gear-checkbox-text {
+  line-height: 1;
+}
+
+.group-gear-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+  padding: 0.6rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.group-gear-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.group-gear-field label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.group-gear-select {
+  padding: 4px 8px !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  max-width: 140px;
+  height: auto !important;
+  color: #1e293b;
+}
+
+.group-gear-select:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.18) !important;
+}
+
+.group-gear-row {
+  background-color: rgba(240, 249, 255, 0.45);
 }
 
 .group-gear-summary {

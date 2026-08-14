@@ -15,6 +15,7 @@ export interface Item {
   id: string;
   name: string;
   personStatuses: Record<string, StatusId>; // personId -> statusId
+  isGroupGear?: boolean;
   broughtByPersonId?: string;
   carriedByPersonId?: string;
   forPersonIds?: string[];
