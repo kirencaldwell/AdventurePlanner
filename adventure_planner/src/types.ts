@@ -34,6 +34,13 @@ export interface Item {
   broughtByPersonId?: string;
   carriedByPersonId?: string;
   forPersonIds?: string[];
+  personGearItems?: Record<string, {
+    name: string;
+    description?: string;
+    weight?: number | string;
+    weightUnit?: 'oz' | 'g' | 'lb' | 'kg' | string;
+    gearClosetItemId?: string;
+  }>; // personId -> individual gear details
 }
 
 export interface Category {
