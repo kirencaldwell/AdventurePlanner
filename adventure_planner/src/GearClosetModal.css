@@ -1,0 +1,288 @@
+.closet-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 1rem;
+}
+
+.closet-picker-modal {
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: pickerModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pickerModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.closet-picker-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+}
+
+.closet-picker-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.closet-picker-title-row h2 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+}
+
+.closet-picker-category-tag {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.closet-picker-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  color: #94a3b8;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.25rem;
+  border-radius: 6px;
+}
+
+.closet-picker-close-btn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+.closet-picker-tabs {
+  display: flex;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 0 1rem;
+}
+
+.closet-picker-tab-btn {
+  padding: 0.75rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.closet-picker-tab-btn:hover {
+  color: #1e293b;
+}
+
+.closet-picker-tab-btn.active {
+  color: #0284c7;
+  border-bottom-color: #0284c7;
+  background: #ffffff;
+}
+
+.closet-picker-body {
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Closet Browse Tab */
+.closet-picker-search-bar {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.closet-picker-search-input {
+  flex: 1;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #ffffff;
+  color: #1e293b;
+}
+
+.closet-picker-search-input:focus {
+  outline: none;
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+.closet-picker-filter-select {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  max-width: 180px;
+}
+
+.closet-picker-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.closet-picker-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  transition: all 0.15s ease;
+}
+
+.closet-picker-item-row:hover {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.closet-picker-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.closet-picker-item-name-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.closet-picker-item-name {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.closet-picker-item-weight {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0369a1;
+  background: #e0f2fe;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.closet-picker-item-desc {
+  font-size: 0.8rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 380px;
+}
+
+.btn-add-to-list {
+  background: #0284c7;
+  color: #ffffff;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-add-to-list:hover {
+  background: #0369a1;
+}
+
+.btn-add-to-list.already-added {
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: default;
+}
+
+.closet-picker-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: #64748b;
+}
+
+.closet-picker-empty p {
+  margin: 0.5rem 0 1rem 0;
+  font-size: 0.9rem;
+}
+
+/* Custom Item Form */
+.closet-custom-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.closet-custom-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #166534;
+  cursor: pointer;
+  user-select: none;
+}
+
+.closet-custom-checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #16a34a;
+  cursor: pointer;
+}
+
+.closet-picker-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}

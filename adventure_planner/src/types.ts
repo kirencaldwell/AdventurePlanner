@@ -11,9 +11,24 @@ export interface Person {
   name: string;
 }
 
+export interface GearClosetItem {
+  id: string;
+  userId?: string;
+  name: string;
+  description?: string;
+  weight?: number | string;
+  weightUnit?: 'oz' | 'g' | 'lb' | 'kg' | string;
+  category?: string;
+  lastModified?: number;
+}
+
 export interface Item {
   id: string;
   name: string;
+  description?: string;
+  weight?: number | string;
+  weightUnit?: 'oz' | 'g' | 'lb' | 'kg' | string;
+  gearClosetItemId?: string;
   personStatuses: Record<string, StatusId>; // personId -> statusId
   isGroupGear?: boolean;
   broughtByPersonId?: string;
