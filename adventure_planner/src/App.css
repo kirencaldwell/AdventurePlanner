@@ -387,9 +387,55 @@ button.danger {
   font-size: 0.8rem;
 }
 
+.person-col-header {
+  vertical-align: top;
+}
+
+.person-col-name {
+  display: block;
+}
+
+.person-col-weight {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #27ae60;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: 0.2rem;
+  opacity: 0.9;
+}
+
 .packing-matrix td {
   padding: 1rem;
   border-bottom: 1px solid #eee;
+}
+
+.person-status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+.cell-closet-btn {
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  border-radius: 4px;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  color: #475569;
+}
+
+.cell-closet-btn:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
 }
 
 .item-name {
@@ -869,6 +915,79 @@ select:focus {
   box-sizing: border-box;
   font-size: 1rem;
 }
+
+/* ── Packed Status section on Trip tab ─────────────────────────── */
+.trip-packing-status {
+  background: var(--white);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+}
+
+.packing-status-heading {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2c3e50;
+  letter-spacing: -0.01em;
+}
+
+.packing-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.packing-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.packing-status-person-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.packing-status-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #2c3e50;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.packing-status-meta {
+  font-size: 0.78rem;
+  color: #7f8c8d;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.packing-progress-track {
+  height: 8px;
+  border-radius: 99px;
+  background: #edf0f0;
+  overflow: hidden;
+}
+
+.packing-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #27ae60, #2ecc71);
+  transition: width 0.4s ease;
+  min-width: 0;
+}
+
+.packing-progress-label {
+  font-size: 0.72rem;
+  color: #95a5a6;
+  text-align: right;
+}
+/* ──────────────────────────────────────────────────────────────── */
 
 .trip-days-header {
   display: flex;
