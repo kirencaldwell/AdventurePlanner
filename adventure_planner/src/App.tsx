@@ -216,7 +216,11 @@ const calcPersonPackingStats = (
         if (status === 'fully-packed' || status === 'in-car') {
           packedCount++;
         }
-        plannedWeightOz += toOz(item.weight, item.weightUnit);
+        // If the person has selected a specific gear closet item, use its weight; otherwise fallback to row-default weight
+        const customGear = item.personGearItems?.[person.id];
+        const w = customGear ? customGear.weight : item.weight;
+        const u = customGear ? customGear.weightUnit : item.weightUnit;
+        plannedWeightOz += toOz(w, u);
       }
     }
 
@@ -879,8 +883,8 @@ function App() {
     }));
   };
 
-  // Link an existing packing list item to a Gear Closet item (updates weight/desc, no new row)
-  const linkItemFromCloset = (categoryId: string, itemId: string, gearItem: GearClosetItem) => {
+  // Link an existing packing list item's cell for a specific person to a Gear Closet item (individual choice)
+  const linkItemFromCloset = (categoryId: string, itemId: string, personId: string, gearItem: GearClosetItem) => {
     updateCurrentTrip(trip => ({
       ...trip,
       categories: trip.categories.map(cat =>
@@ -891,13 +895,43 @@ function App() {
                 it.id === itemId
                   ? {
                       ...it,
-                      weight: gearItem.weight,
-                      weightUnit: gearItem.weightUnit,
-                      description: gearItem.description ?? it.description,
-                      gearClosetItemId: gearItem.id,
+                      personGearItems: {
+                        ...(it.personGearItems || {}),
+                        [personId]: {
+                          name: gearItem.name,
+                          description: gearItem.description,
+                          weight: gearItem.weight,
+                          weightUnit: gearItem.weightUnit as any,
+                          gearClosetItemId: gearItem.id,
+                        }
+                      }
                     }
                   : it
               ),
+            }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  // Remove person-specific gear link and revert back to default row item
+  const removePersonGearLink = (categoryId: string, itemId: string, personId: string) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: cat.items.map(it => {
+                if (it.id !== itemId) return it;
+                const updated = { ...(it.personGearItems || {}) };
+                delete updated[personId];
+                return {
+                  ...it,
+                  personGearItems: updated,
+                };
+              }),
             }
           : cat
       ),
@@ -2684,17 +2718,6 @@ function App() {
                 >
                   Add
                 </button>
-                <button
-                  type="button"
-                  className="add-from-closet-btn"
-                  onClick={() => {
-                    setClosetPickerCategoryId(activeCategory.id);
-                    setClosetPickerOpen(true);
-                  }}
-                  title="Choose from Gear Closet"
-                >
-                  📦 Gear Closet
-                </button>
               </div>
             </div>
 
@@ -2800,19 +2823,41 @@ function App() {
                               <option key={status.id} value={status.id}>{status.label}</option>
                             ))}
                           </select>
-                          <button
-                            type="button"
-                            className="cell-closet-btn"
-                            title={`Link gear closet item for ${person.name}`}
-                            onClick={() => {
-                              setClosetPickerCategoryId(activeCategory.id);
-                              setClosetPickerItemId(item.id);
-                              setClosetPickerPersonId(person.id);
-                              setClosetPickerOpen(true);
-                            }}
-                          >
-                            📦
-                          </button>
+                          {item.personGearItems?.[person.id] && (
+                            <div className="cell-linked-gear">
+                              <span className="cell-linked-gear-name" title={item.personGearItems[person.id].description}>
+                                🏷️ {item.personGearItems[person.id].name}
+                              </span>
+                              <span className="cell-linked-gear-weight">
+                                ⚖️ {item.personGearItems[person.id].weight} {item.personGearItems[person.id].weightUnit || 'oz'}
+                              </span>
+                            </div>
+                          )}
+                          <div className="cell-action-row">
+                            <button
+                              type="button"
+                              className="cell-closet-btn"
+                              title={item.personGearItems?.[person.id] ? `Change gear closet item for ${person.name}` : `Link gear closet item for ${person.name}`}
+                              onClick={() => {
+                                setClosetPickerCategoryId(activeCategory.id);
+                                setClosetPickerItemId(item.id);
+                                setClosetPickerPersonId(person.id);
+                                setClosetPickerOpen(true);
+                              }}
+                            >
+                              {item.personGearItems?.[person.id] ? '🔄 Change' : '📦 Link Gear'}
+                            </button>
+                            {item.personGearItems?.[person.id] && (
+                              <button
+                                type="button"
+                                className="cell-unlink-btn"
+                                title="Remove link to gear closet item"
+                                onClick={() => removePersonGearLink(activeCategory.id, item.id, person.id)}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
                         </td>
                       ))}
                     </tr>
@@ -3084,8 +3129,8 @@ function App() {
             linkItemName={pickerItem?.name}
             linkPersonName={pickerPerson?.name}
             onSelectFromCloset={(gearItem) => {
-              if (isLinkMode && closetPickerItemId) {
-                linkItemFromCloset(closetPickerCategoryId, closetPickerItemId, gearItem);
+              if (isLinkMode && closetPickerItemId && closetPickerPersonId) {
+                linkItemFromCloset(closetPickerCategoryId, closetPickerItemId, closetPickerPersonId, gearItem);
                 closePicker();
               } else {
                 addItemFromCloset(closetPickerCategoryId, gearItem);
