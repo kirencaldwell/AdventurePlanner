@@ -1519,6 +1519,7 @@ function App() {
                 isGroupGear: false,
                 broughtByPersonId: undefined,
                 carriedByPersonId: undefined,
+                forPersonIds: undefined,
               };
             }
           }),
@@ -1562,6 +1563,30 @@ function App() {
             return {
               ...item,
               [field]: personId,
+            };
+          }),
+        };
+      }),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const toggleForPerson = (categoryId: string, itemId: string, personId: string, isSelected: boolean) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat => {
+        if (cat.id !== categoryId) return cat;
+        return {
+          ...cat,
+          items: cat.items.map(item => {
+            if (item.id !== itemId) return item;
+            const currentFor = item.forPersonIds || [];
+            const nextFor = isSelected
+              ? [...currentFor, personId]
+              : currentFor.filter(id => id !== personId);
+            return {
+              ...item,
+              forPersonIds: nextFor,
             };
           }),
         };
@@ -2798,6 +2823,24 @@ function App() {
                                     <option key={person.id} value={person.id}>{person.name}</option>
                                   ))}
                                 </select>
+                              </div>
+                              <div className="group-gear-field group-gear-field-for">
+                                <label>For:</label>
+                                <div className="group-gear-for-container">
+                                  {currentTrip.people.map(person => {
+                                    const isSelected = item.forPersonIds?.includes(person.id) || false;
+                                    return (
+                                      <label key={person.id} className={`group-gear-for-checkbox-label ${isSelected ? 'selected' : ''}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={(e) => toggleForPerson(activeCategory.id, item.id, person.id, e.target.checked)}
+                                        />
+                                        <span>{person.name}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             </div>
                           )}
