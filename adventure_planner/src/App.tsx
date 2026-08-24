@@ -1662,26 +1662,6 @@ function App() {
     }));
   };
 
-  const updateItemQuantity = (categoryId: string, itemId: string, quantity: number) => {
-    updateCurrentTrip(trip => ({
-      ...trip,
-      categories: trip.categories.map(cat => {
-        if (cat.id !== categoryId) return cat;
-        return {
-          ...cat,
-          items: cat.items.map(item => {
-            if (item.id !== itemId) return item;
-            return {
-              ...item,
-              quantity: Math.max(1, quantity),
-            };
-          }),
-        };
-      }),
-      lastModified: Date.now(),
-    }));
-  };
-
   const resetTab = (categoryId: string) => {
     if (!confirm('Are you sure you want to reset all item statuses for this tab?')) return;
 
