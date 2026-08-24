@@ -220,7 +220,8 @@ const calcPersonPackingStats = (
         const customGear = item.personGearItems?.[person.id];
         const w = customGear ? customGear.weight : item.weight;
         const u = customGear ? customGear.weightUnit : item.weightUnit;
-        plannedWeightOz += toOz(w, u);
+        const qty = typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1;
+        plannedWeightOz += toOz(w, u) * qty;
       }
     }
 
@@ -802,28 +803,92 @@ function App() {
     return () => clearTimeout(timeoutId);
   }, [trips, isInitialLoad, user]);
 
-  // Load gear closet from localStorage (keyed per user)
+  // Load gear closet from Supabase when user is set
   useEffect(() => {
-    if (!user) return;
-    try {
-      const stored = localStorage.getItem(`gear-closet-${user.id}`);
-      if (stored) {
-        const parsed = JSON.parse(stored) as GearClosetItem[];
-        setGearCloset(Array.isArray(parsed) ? parsed : []);
-      }
-    } catch {
-      // ignore
+    if (!user) {
+      setGearCloset([]);
+      return;
     }
+
+    const loadGearCloset = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('gear_closet')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('last_modified', { ascending: false });
+
+        if (error) {
+          console.error('Failed to load gear closet from Supabase:', error);
+          return;
+        }
+
+        if (Array.isArray(data)) {
+          const mapped: GearClosetItem[] = data.map(row => ({
+            id: row.id,
+            userId: row.user_id,
+            name: row.name,
+            category: row.category ?? undefined,
+            weight: row.weight !== null && row.weight !== undefined ? Number(row.weight) : undefined,
+            weightUnit: row.weight_unit ?? undefined,
+            description: row.description ?? undefined,
+            lastModified: row.last_modified ? Number(row.last_modified) : undefined,
+          }));
+          setGearCloset(mapped);
+        }
+      } catch (err) {
+        console.error('Unexpected error loading gear closet:', err);
+      }
+    };
+
+    loadGearCloset();
   }, [user]);
 
-  // Save gear closet to localStorage on change
+  // Save gear closet to Supabase on change (debounced)
+  const prevGearClosetRef = useRef<GearClosetItem[]>([]);
   useEffect(() => {
     if (!user || isInitialLoad) return;
-    try {
-      localStorage.setItem(`gear-closet-${user.id}`, JSON.stringify(gearCloset));
-    } catch {
-      // ignore
-    }
+
+    const prev = prevGearClosetRef.current;
+    const current = gearCloset;
+    prevGearClosetRef.current = current;
+
+    const timeoutId = setTimeout(async () => {
+      // Upsert all current items
+      if (current.length > 0) {
+        const upsertData = current.map(item => ({
+          id: item.id,
+          user_id: user.id,
+          name: item.name,
+          category: item.category ?? null,
+          weight: item.weight !== undefined && item.weight !== null && item.weight !== '' ? Number(item.weight) : null,
+          weight_unit: item.weightUnit ?? null,
+          description: item.description ?? null,
+          last_modified: item.lastModified ?? Date.now(),
+        }));
+
+        const { error: upsertError } = await supabase.from('gear_closet').upsert(upsertData);
+        if (upsertError) {
+          console.error('Failed to save gear closet to Supabase:', upsertError);
+        }
+      }
+
+      // Delete items that were removed
+      const prevIds = new Set(prev.map(i => i.id));
+      const currentIds = new Set(current.map(i => i.id));
+      const deletedIds = [...prevIds].filter(id => !currentIds.has(id));
+      if (deletedIds.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('gear_closet')
+          .delete()
+          .in('id', deletedIds);
+        if (deleteError) {
+          console.error('Failed to delete gear closet items from Supabase:', deleteError);
+        }
+      }
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
   }, [gearCloset, user, isInitialLoad]);
 
   // Gear Closet CRUD handlers
@@ -874,6 +939,7 @@ function App() {
                   gearClosetItemId: gearItem.id,
                   personStatuses: {},
                   isGroupGear: false,
+                  quantity: 1,
                 },
               ],
             }
@@ -970,6 +1036,7 @@ function App() {
                   weightUnit: itemData.weightUnit,
                   personStatuses: {},
                   isGroupGear: false,
+                  quantity: 1,
                 },
               ],
             }
@@ -1129,7 +1196,7 @@ function App() {
       ...trip,
       categories: trip.categories.map(cat => 
         cat.id === categoryId 
-          ? { ...cat, items: [...cat.items, { id: generateId(), name, personStatuses: {}, isGroupGear: false }] }
+          ? { ...cat, items: [...cat.items, { id: generateId(), name, personStatuses: {}, isGroupGear: false, quantity: 1 }] }
           : cat
       ),
       lastModified: Date.now(),
@@ -1679,6 +1746,7 @@ function App() {
             broughtByPersonId: item.broughtByPersonId,
             carriedByPersonId: item.carriedByPersonId,
             forPersonIds: item.forPersonIds,
+            quantity: item.quantity,
           };
         });
 
@@ -1723,6 +1791,7 @@ function App() {
           broughtByPersonId: item.broughtByPersonId,
           carriedByPersonId: item.carriedByPersonId,
           forPersonIds: item.forPersonIds,
+          quantity: item.quantity,
         }))
       })),
       startDate: currentTrip.startDate || '',
