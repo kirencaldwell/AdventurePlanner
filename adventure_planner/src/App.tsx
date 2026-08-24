@@ -1662,6 +1662,23 @@ function App() {
     }));
   };
 
+  const updateItemQuantity = (categoryId: string, itemId: string, quantity: number) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat => {
+        if (cat.id !== categoryId) return cat;
+        return {
+          ...cat,
+          items: cat.items.map(item => {
+            if (item.id !== itemId) return item;
+            return { ...item, quantity: Math.max(1, quantity) };
+          }),
+        };
+      }),
+      lastModified: Date.now(),
+    }));
+  };
+
   const resetTab = (categoryId: string) => {
     if (!confirm('Are you sure you want to reset all item statuses for this tab?')) return;
 
@@ -2842,11 +2859,33 @@ function App() {
                         <div className="item-name-text">
                           <div className="item-name-title-row">
                             <span className="item-name-title">{item.name}</span>
-                            {(item.weight !== undefined && item.weight !== null && item.weight !== '') && (
-                              <span className="item-weight-pill">
-                                ⚖️ {item.weight} {item.weightUnit || 'oz'}
-                              </span>
-                            )}
+                            {(item.weight !== undefined && item.weight !== null && item.weight !== '') && (() => {
+                              const qty = typeof item.quantity === 'number' && item.quantity > 1 ? item.quantity : 1;
+                              const w = Number(item.weight);
+                              const totalW = !isNaN(w) && qty > 1 ? (w * qty).toFixed(2).replace(/\.?0+$/, '') : null;
+                              return (
+                                <span className="item-weight-pill">
+                                  ⚖️ {item.weight} {item.weightUnit || 'oz'}
+                                  {totalW && <span className="item-weight-pill-total">= {totalW} {item.weightUnit || 'oz'} total</span>}
+                                </span>
+                              );
+                            })()}
+                            <div className="item-qty-stepper">
+                              <button
+                                type="button"
+                                className="item-qty-btn"
+                                onClick={() => updateItemQuantity(activeCategory.id, item.id, (item.quantity ?? 1) - 1)}
+                                disabled={(item.quantity ?? 1) <= 1}
+                                title="Decrease quantity"
+                              >−</button>
+                              <span className="item-qty-value">{item.quantity ?? 1}</span>
+                              <button
+                                type="button"
+                                className="item-qty-btn"
+                                onClick={() => updateItemQuantity(activeCategory.id, item.id, (item.quantity ?? 1) + 1)}
+                                title="Increase quantity"
+                              >+</button>
+                            </div>
                           </div>
                           {item.description && (
                             <div className="item-desc-text">{item.description}</div>
