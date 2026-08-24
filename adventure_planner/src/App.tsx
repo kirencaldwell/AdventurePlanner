@@ -203,37 +203,61 @@ const calcPersonPackingStats = (
     ? trip.categories.filter(c => c.id === categoryId)
     : trip.categories;
 
-  return trip.people.map(person => {
-    let packedCount = 0;
-    let totalCount = 0;
-    let plannedWeightOz = 0;
+  // First pass: collect base stats (packed counts) and build a weight
+  // transfer map so we can redistribute carried weight to the carrier.
+  const weightByPerson: Record<string, number> = {};
+  const packedCount: Record<string, number> = {};
+  const totalCount: Record<string, number> = {};
 
-    for (const cat of categories) {
-      for (const item of cat.items) {
+  for (const person of trip.people) {
+    weightByPerson[person.id] = 0;
+    packedCount[person.id] = 0;
+    totalCount[person.id] = 0;
+  }
+
+  for (const cat of categories) {
+    for (const item of cat.items) {
+      const qty = typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1;
+
+      for (const person of trip.people) {
         const status = item.personStatuses[person.id] || 'not-packed';
         if (status === 'not-bringing') continue;
-        totalCount++;
+
+        totalCount[person.id]++;
         if (status === 'fully-packed' || status === 'in-car') {
-          packedCount++;
+          packedCount[person.id]++;
         }
-        // If the person has selected a specific gear closet item, use its weight; otherwise fallback to row-default weight
+
+        // Determine the weight for this person's item
         const customGear = item.personGearItems?.[person.id];
         const w = customGear ? customGear.weight : item.weight;
         const u = customGear ? customGear.weightUnit : item.weightUnit;
-        const qty = typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1;
-        plannedWeightOz += toOz(w, u) * qty;
+        const itemWeightOz = toOz(w, u) * qty;
+
+        // If someone else is carrying this item for this person,
+        // add the weight to the carrier instead of the owner.
+        const carrierId = item.personCarriedBy?.[person.id];
+        if (carrierId && carrierId !== person.id && weightByPerson[carrierId] !== undefined) {
+          weightByPerson[carrierId] += itemWeightOz;
+        } else {
+          weightByPerson[person.id] += itemWeightOz;
+        }
       }
     }
+  }
 
-    return {
-      personId: person.id,
-      packedCount,
-      totalCount,
-      packedPercent: totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0,
-      plannedWeightOz,
-    };
-  });
+  return trip.people.map(person => ({
+    personId: person.id,
+    packedCount: packedCount[person.id] ?? 0,
+    totalCount: totalCount[person.id] ?? 0,
+    packedPercent:
+      (totalCount[person.id] ?? 0) > 0
+        ? Math.round(((packedCount[person.id] ?? 0) / (totalCount[person.id] ?? 0)) * 100)
+        : 0,
+    plannedWeightOz: weightByPerson[person.id] ?? 0,
+  }));
 };
+
 
 const getTripActivitySummary = (trip: Trip) => {
   const activities = (trip.days || []).flatMap(day => day.activities || []);
@@ -997,6 +1021,30 @@ function App() {
                   ...it,
                   personGearItems: updated,
                 };
+              }),
+            }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const setPersonCarriedBy = (categoryId: string, itemId: string, personId: string, carrierId: string | undefined) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: cat.items.map(it => {
+                if (it.id !== itemId) return it;
+                const updated = { ...(it.personCarriedBy || {}) };
+                if (carrierId) {
+                  updated[personId] = carrierId;
+                } else {
+                  delete updated[personId];
+                }
+                return { ...it, personCarriedBy: updated };
               }),
             }
           : cat
@@ -2976,6 +3024,23 @@ function App() {
                                 <option key={status.id} value={status.id}>{status.label}</option>
                               ))}
                             </select>
+                            {(item.personStatuses[person.id] || 'not-packed') !== 'not-bringing' && currentTrip.people.length > 1 && (
+                              <div className="cell-carried-by-row">
+                                <label className="cell-carried-by-label">📦 Carried by</label>
+                                <select
+                                  className="cell-carried-by-select"
+                                  value={item.personCarriedBy?.[person.id] || ''}
+                                  onChange={(e) => setPersonCarriedBy(activeCategory.id, item.id, person.id, e.target.value || undefined)}
+                                >
+                                  <option value="">— self —</option>
+                                  {currentTrip.people
+                                    .filter(p => p.id !== person.id)
+                                    .map(p => (
+                                      <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                              </div>
+                            )}
                             {item.personGearItems?.[person.id] && (
                               <div className="cell-linked-gear">
                                 <span className="cell-linked-gear-name" title={item.personGearItems[person.id].description}>
