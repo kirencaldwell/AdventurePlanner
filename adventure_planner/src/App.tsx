@@ -224,8 +224,6 @@ const calcPersonPackingStats = (
 
   for (const cat of categories) {
     for (const item of cat.items) {
-      const qty = typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1;
-
       for (const person of trip.people) {
         const status = item.personStatuses[person.id] || 'not-packed';
         if (status === 'not-bringing') continue;
@@ -235,11 +233,15 @@ const calcPersonPackingStats = (
           packedCount[person.id]++;
         }
 
+        const personQty = typeof item.personQuantities?.[person.id] === 'number' && item.personQuantities[person.id] > 0
+          ? item.personQuantities[person.id]
+          : (typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1);
+
         // Determine the weight for this person's item
         const customGear = item.personGearItems?.[person.id];
         const w = customGear ? customGear.weight : item.weight;
         const u = customGear ? customGear.weightUnit : item.weightUnit;
-        const itemWeightOz = toOz(w, u) * qty;
+        const itemWeightOz = toOz(w, u) * personQty;
 
         // Weight category (worn, food, or base)
         const weightType = customGear?.weightType;
@@ -1766,7 +1768,7 @@ function App() {
     }));
   };
 
-  const updateItemQuantity = (categoryId: string, itemId: string, quantity: number) => {
+  const updatePersonQuantity = (categoryId: string, itemId: string, personId: string, quantity: number) => {
     updateCurrentTrip(trip => ({
       ...trip,
       categories: trip.categories.map(cat => {
@@ -1775,7 +1777,13 @@ function App() {
           ...cat,
           items: cat.items.map(item => {
             if (item.id !== itemId) return item;
-            return { ...item, quantity: Math.max(1, quantity) };
+            return {
+              ...item,
+              personQuantities: {
+                ...(item.personQuantities || {}),
+                [personId]: Math.max(1, quantity),
+              },
+            };
           }),
         };
       }),
@@ -1868,6 +1876,7 @@ function App() {
             carriedByPersonId: item.carriedByPersonId,
             forPersonIds: item.forPersonIds,
             quantity: item.quantity,
+            personQuantities: item.personQuantities ? { ...item.personQuantities } : undefined,
           };
         });
 
@@ -1913,6 +1922,7 @@ function App() {
           carriedByPersonId: item.carriedByPersonId,
           forPersonIds: item.forPersonIds,
           quantity: item.quantity,
+          personQuantities: item.personQuantities ? { ...item.personQuantities } : undefined,
         }))
       })),
       startDate: currentTrip.startDate || '',
@@ -2975,33 +2985,11 @@ function App() {
                         <div className="item-name-text">
                           <div className="item-name-title-row">
                             <span className="item-name-title">{item.name}</span>
-                            {(item.weight !== undefined && item.weight !== null && item.weight !== '') && (() => {
-                              const qty = typeof item.quantity === 'number' && item.quantity > 1 ? item.quantity : 1;
-                              const w = Number(item.weight);
-                              const totalW = !isNaN(w) && qty > 1 ? (w * qty).toFixed(2).replace(/\.?0+$/, '') : null;
-                              return (
-                                <span className="item-weight-pill">
-                                  ⚖️ {item.weight} {item.weightUnit || 'oz'}
-                                  {totalW && <span className="item-weight-pill-total">= {totalW} {item.weightUnit || 'oz'} total</span>}
-                                </span>
-                              );
-                            })()}
-                            <div className="item-qty-stepper">
-                              <button
-                                type="button"
-                                className="item-qty-btn"
-                                onClick={() => updateItemQuantity(activeCategory.id, item.id, (item.quantity ?? 1) - 1)}
-                                disabled={(item.quantity ?? 1) <= 1}
-                                title="Decrease quantity"
-                              >−</button>
-                              <span className="item-qty-value">{item.quantity ?? 1}</span>
-                              <button
-                                type="button"
-                                className="item-qty-btn"
-                                onClick={() => updateItemQuantity(activeCategory.id, item.id, (item.quantity ?? 1) + 1)}
-                                title="Increase quantity"
-                              >+</button>
-                            </div>
+                            {(item.weight !== undefined && item.weight !== null && item.weight !== '') && (
+                              <span className="item-weight-pill">
+                                ⚖️ {item.weight} {item.weightUnit || 'oz'}
+                              </span>
+                            )}
                           </div>
                           {item.description && (
                             <div className="item-desc-text">{item.description}</div>
@@ -3077,38 +3065,65 @@ function App() {
                           ×
                         </button>
                       </td>
-                      {currentTrip.people.map(person => (
-                        <td key={person.id} className="person-status-cell">
-                          <div className="cell-content-wrapper">
-                            <select 
-                              value={item.personStatuses[person.id] || 'not-packed'}
-                              onChange={(e) => updateStatus(activeCategory.id, item.id, person.id, e.target.value)}
-                              style={{ 
-                                backgroundColor: DEFAULT_STATUSES.find(s => s.id === (item.personStatuses[person.id] || 'not-packed'))?.color + '44',
-                                borderColor: DEFAULT_STATUSES.find(s => s.id === (item.personStatuses[person.id] || 'not-packed'))?.color
-                              }}
-                            >
-                              {DEFAULT_STATUSES.map(status => (
-                                <option key={status.id} value={status.id}>{status.label}</option>
-                              ))}
-                            </select>
-                            {(item.personStatuses[person.id] || 'not-packed') !== 'not-bringing' && currentTrip.people.length > 1 && (
-                              <div className="cell-carried-by-row">
-                                <label className="cell-carried-by-label">📦 Carried by</label>
-                                <select
-                                  className="cell-carried-by-select"
-                                  value={item.personCarriedBy?.[person.id] || ''}
-                                  onChange={(e) => setPersonCarriedBy(activeCategory.id, item.id, person.id, e.target.value || undefined)}
-                                >
-                                  <option value="">— self —</option>
-                                  {currentTrip.people
-                                    .filter(p => p.id !== person.id)
-                                    .map(p => (
-                                      <option key={p.id} value={p.id}>{p.name}</option>
-                                    ))}
-                                </select>
-                              </div>
-                            )}
+                      {currentTrip.people.map(person => {
+                        const personStatus = item.personStatuses[person.id] || 'not-packed';
+                        const personQty = item.personQuantities?.[person.id] ?? (item.quantity ?? 1);
+                        return (
+                          <td key={person.id} className="person-status-cell">
+                            <div className="cell-content-wrapper">
+                              <select 
+                                value={personStatus}
+                                onChange={(e) => updateStatus(activeCategory.id, item.id, person.id, e.target.value)}
+                                style={{ 
+                                  backgroundColor: DEFAULT_STATUSES.find(s => s.id === personStatus)?.color + '44',
+                                  borderColor: DEFAULT_STATUSES.find(s => s.id === personStatus)?.color
+                                }}
+                              >
+                                {DEFAULT_STATUSES.map(status => (
+                                  <option key={status.id} value={status.id}>{status.label}</option>
+                                ))}
+                              </select>
+                              {personStatus !== 'not-bringing' && (
+                                <div className="cell-carried-by-row">
+                                  {currentTrip.people.length > 1 ? (
+                                    <div className="cell-carried-by-group">
+                                      <label className="cell-carried-by-label">📦 Carried by</label>
+                                      <select
+                                        className="cell-carried-by-select"
+                                        value={item.personCarriedBy?.[person.id] || ''}
+                                        onChange={(e) => setPersonCarriedBy(activeCategory.id, item.id, person.id, e.target.value || undefined)}
+                                      >
+                                        <option value="">— self —</option>
+                                        {currentTrip.people
+                                          .filter(p => p.id !== person.id)
+                                          .map(p => (
+                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                          ))}
+                                      </select>
+                                    </div>
+                                  ) : (
+                                    <div className="cell-qty-label-container">
+                                      <span className="cell-qty-label">Qty:</span>
+                                    </div>
+                                  )}
+                                  <div className="cell-qty-stepper">
+                                    <button
+                                      type="button"
+                                      className="cell-qty-btn"
+                                      onClick={() => updatePersonQuantity(activeCategory.id, item.id, person.id, personQty - 1)}
+                                      disabled={personQty <= 1}
+                                      title="Decrease quantity"
+                                    >−</button>
+                                    <span className="cell-qty-value">{personQty}</span>
+                                    <button
+                                      type="button"
+                                      className="cell-qty-btn"
+                                      onClick={() => updatePersonQuantity(activeCategory.id, item.id, person.id, personQty + 1)}
+                                      title="Increase quantity"
+                                    >+</button>
+                                  </div>
+                                </div>
+                              )}
                             {item.personGearItems?.[person.id] && (
                               <div className="cell-linked-gear">
                                 <span className="cell-linked-gear-name" title={item.personGearItems[person.id].description}>
@@ -3164,8 +3179,9 @@ function App() {
                             </div>
                           </div>
                         </td>
-                      ))}
-                    </tr>
+                      );
+                    })}
+                  </tr>
                   ))}
                 </tbody>
               </table>
