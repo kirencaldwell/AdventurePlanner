@@ -2673,3 +2673,55 @@ select:focus {
   line-height: 1.35;
 }
 
+/* Quantity stepper */
+.item-qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-left: 0.35rem;
+}
+
+.item-qty-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 4px;
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.1s, color 0.1s;
+}
+
+.item-qty-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.item-qty-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.item-qty-value {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #334155;
+  min-width: 1.2rem;
+  text-align: center;
+}
+
+/* Total weight annotation inside the weight pill */
+.item-weight-pill-total {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #0369a1;
+  opacity: 0.75;
+  margin-left: 0.2rem;
+}
