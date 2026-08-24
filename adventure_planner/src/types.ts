@@ -34,6 +34,7 @@ export interface Item {
   broughtByPersonId?: string;
   carriedByPersonId?: string;
   forPersonIds?: string[];
+  quantity?: number;
   personGearItems?: Record<string, {
     name: string;
     description?: string;
