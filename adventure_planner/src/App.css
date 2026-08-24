@@ -406,6 +406,22 @@ button.danger {
   opacity: 0.9;
 }
 
+.person-col-weight-container {
+  margin-top: 0.2rem;
+}
+
+.person-col-weight-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #64748b;
+  margin-top: 0.2rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .packing-matrix td {
   padding: 1rem;
   border-bottom: 1px solid #eee;
@@ -498,6 +514,32 @@ button.danger {
   background: #fee2e2;
   border-color: #f87171;
   color: #991b1b;
+}
+
+.cell-weight-type-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.55;
+  transition: all 0.15s ease;
+}
+
+.cell-weight-type-btn:hover {
+  opacity: 0.85;
+  background: #e2e8f0;
+}
+
+.cell-weight-type-btn.active {
+  opacity: 1;
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px #3b82f6;
 }
 
 .cell-linked-gear {
@@ -1119,6 +1161,15 @@ select:focus {
   font-size: 0.72rem;
   color: #95a5a6;
   text-align: right;
+}
+
+.packing-status-weight-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-top: 0.25rem;
 }
 /* ──────────────────────────────────────────────────────────────── */
 

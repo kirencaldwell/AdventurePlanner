@@ -192,6 +192,9 @@ interface PersonPackingStats {
   totalCount: number;    // all items not 'not-bringing'
   packedPercent: number; // 0-100
   plannedWeightOz: number; // total weight of non-'not-bringing' items
+  baseWeightOz: number;    // base weight
+  wornWeightOz: number;    // worn weight
+  foodWeightOz: number;    // food weight
 }
 
 // Compute packing stats per person, optionally scoped to one category
@@ -203,14 +206,18 @@ const calcPersonPackingStats = (
     ? trip.categories.filter(c => c.id === categoryId)
     : trip.categories;
 
-  // First pass: collect base stats (packed counts) and build a weight
-  // transfer map so we can redistribute carried weight to the carrier.
-  const weightByPerson: Record<string, number> = {};
+  const totalWeightByPerson: Record<string, number> = {};
+  const baseWeightByPerson: Record<string, number> = {};
+  const wornWeightByPerson: Record<string, number> = {};
+  const foodWeightByPerson: Record<string, number> = {};
   const packedCount: Record<string, number> = {};
   const totalCount: Record<string, number> = {};
 
   for (const person of trip.people) {
-    weightByPerson[person.id] = 0;
+    totalWeightByPerson[person.id] = 0;
+    baseWeightByPerson[person.id] = 0;
+    wornWeightByPerson[person.id] = 0;
+    foodWeightByPerson[person.id] = 0;
     packedCount[person.id] = 0;
     totalCount[person.id] = 0;
   }
@@ -234,13 +241,24 @@ const calcPersonPackingStats = (
         const u = customGear ? customGear.weightUnit : item.weightUnit;
         const itemWeightOz = toOz(w, u) * qty;
 
+        // Weight category (worn, food, or base)
+        const weightType = customGear?.weightType;
+
         // If someone else is carrying this item for this person,
         // add the weight to the carrier instead of the owner.
         const carrierId = item.personCarriedBy?.[person.id];
-        if (carrierId && carrierId !== person.id && weightByPerson[carrierId] !== undefined) {
-          weightByPerson[carrierId] += itemWeightOz;
+        const targetPersonId =
+          carrierId && carrierId !== person.id && totalWeightByPerson[carrierId] !== undefined
+            ? carrierId
+            : person.id;
+
+        totalWeightByPerson[targetPersonId] += itemWeightOz;
+        if (weightType === 'worn') {
+          wornWeightByPerson[targetPersonId] += itemWeightOz;
+        } else if (weightType === 'food') {
+          foodWeightByPerson[targetPersonId] += itemWeightOz;
         } else {
-          weightByPerson[person.id] += itemWeightOz;
+          baseWeightByPerson[targetPersonId] += itemWeightOz;
         }
       }
     }
@@ -254,7 +272,10 @@ const calcPersonPackingStats = (
       (totalCount[person.id] ?? 0) > 0
         ? Math.round(((packedCount[person.id] ?? 0) / (totalCount[person.id] ?? 0)) * 100)
         : 0,
-    plannedWeightOz: weightByPerson[person.id] ?? 0,
+    plannedWeightOz: totalWeightByPerson[person.id] ?? 0,
+    baseWeightOz: baseWeightByPerson[person.id] ?? 0,
+    wornWeightOz: wornWeightByPerson[person.id] ?? 0,
+    foodWeightOz: foodWeightByPerson[person.id] ?? 0,
   }));
 };
 
@@ -1045,6 +1066,41 @@ function App() {
                   delete updated[personId];
                 }
                 return { ...it, personCarriedBy: updated };
+              }),
+            }
+          : cat
+      ),
+      lastModified: Date.now(),
+    }));
+  };
+
+  const togglePersonGearWeightType = (
+    categoryId: string,
+    itemId: string,
+    personId: string,
+    targetType: 'worn' | 'food'
+  ) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      categories: trip.categories.map(cat =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              items: cat.items.map(it => {
+                if (it.id !== itemId) return it;
+                const currentGear = it.personGearItems?.[personId];
+                if (!currentGear) return it;
+                const newWeightType = currentGear.weightType === targetType ? 'base' : targetType;
+                return {
+                  ...it,
+                  personGearItems: {
+                    ...(it.personGearItems || {}),
+                    [personId]: {
+                      ...currentGear,
+                      weightType: newWeightType,
+                    },
+                  },
+                };
               }),
             }
           : cat
@@ -2624,6 +2680,11 @@ function App() {
                             />
                           </div>
                           <div className="packing-progress-label">{stats.packedPercent}% packed</div>
+                          <div className="packing-status-weight-breakdown">
+                            <span title="Base Weight">🎒 Base: {formatWeight(stats.baseWeightOz)}</span>
+                            <span title="Worn Weight">👕 Worn: {formatWeight(stats.wornWeightOz)}</span>
+                            <span title="Food Weight">🍴 Food: {formatWeight(stats.foodWeightOz)}</span>
+                          </div>
                         </div>
                       );
                     })}
@@ -2893,7 +2954,14 @@ function App() {
                         <th key={p.id} className="person-col-header">
                           <span className="person-col-name">{p.name}</span>
                           {personStat && personStat.plannedWeightOz > 0 && (
-                            <span className="person-col-weight">{formatWeight(personStat.plannedWeightOz)}</span>
+                            <div className="person-col-weight-container">
+                              <span className="person-col-weight" title="Total Weight">{formatWeight(personStat.plannedWeightOz)}</span>
+                              <div className="person-col-weight-breakdown">
+                                <span title="Base Weight">🎒 {formatWeight(personStat.baseWeightOz)}</span>
+                                <span title="Worn Weight">👕 {formatWeight(personStat.wornWeightOz)}</span>
+                                <span title="Food Weight">🍴 {formatWeight(personStat.foodWeightOz)}</span>
+                              </div>
+                            </div>
                           )}
                         </th>
                       );
@@ -3066,14 +3134,32 @@ function App() {
                                 {item.personGearItems?.[person.id] ? '🔄 Change' : '📦 Link Gear'}
                               </button>
                               {item.personGearItems?.[person.id] && (
-                                <button
-                                  type="button"
-                                  className="cell-unlink-btn"
-                                  title="Remove link to gear closet item"
-                                  onClick={() => removePersonGearLink(activeCategory.id, item.id, person.id)}
-                                >
-                                  ✕
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    className={`cell-weight-type-btn ${item.personGearItems[person.id].weightType === 'worn' ? 'active' : ''}`}
+                                    title={item.personGearItems[person.id].weightType === 'worn' ? 'Currently Worn Weight (click to set Base Weight)' : 'Mark as Worn Weight'}
+                                    onClick={() => togglePersonGearWeightType(activeCategory.id, item.id, person.id, 'worn')}
+                                  >
+                                    👕
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`cell-weight-type-btn ${item.personGearItems[person.id].weightType === 'food' ? 'active' : ''}`}
+                                    title={item.personGearItems[person.id].weightType === 'food' ? 'Currently Food Weight (click to set Base Weight)' : 'Mark as Food Weight'}
+                                    onClick={() => togglePersonGearWeightType(activeCategory.id, item.id, person.id, 'food')}
+                                  >
+                                    🍴
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="cell-unlink-btn"
+                                    title="Remove link to gear closet item"
+                                    onClick={() => removePersonGearLink(activeCategory.id, item.id, person.id)}
+                                  >
+                                    ✕
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>

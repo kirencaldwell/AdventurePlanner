@@ -42,6 +42,7 @@ export interface Item {
     weight?: number | string;
     weightUnit?: 'oz' | 'g' | 'lb' | 'kg' | string;
     gearClosetItemId?: string;
+    weightType?: 'base' | 'worn' | 'food';
   }>; // personId -> individual gear details
 }
 
