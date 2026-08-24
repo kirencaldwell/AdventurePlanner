@@ -35,6 +35,7 @@ export interface Item {
   carriedByPersonId?: string;
   forPersonIds?: string[];
   quantity?: number;
+  personCarriedBy?: Record<string, string>; // personId -> carrierPersonId (who physically carries this item for that person)
   personGearItems?: Record<string, {
     name: string;
     description?: string;
@@ -43,6 +44,7 @@ export interface Item {
     gearClosetItemId?: string;
   }>; // personId -> individual gear details
 }
+
 
 export interface Category {
   id: string;
