@@ -2793,11 +2793,11 @@ function App() {
                           </button>
                           <button
                             type="button"
-                            className="delete-tab-btn"
+                            className="day-remove-btn"
                             onClick={() => deleteTripDay(day.id)}
                             title="Remove Day"
                           >
-                            ×
+                            🗑️ Remove
                           </button>
                         </div>
                       </div>
