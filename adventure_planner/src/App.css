@@ -366,14 +366,18 @@ button.danger {
   background: var(--white);
   border-radius: var(--border-radius);
   box-shadow: var(--shadow);
-  overflow-x: auto;
+  overflow: auto;
+  max-height: calc(100vh - 160px);
   margin-bottom: 2rem;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
 }
 
 .packing-matrix {
   width: 100%;
   min-width: 640px;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .packing-matrix th {
@@ -385,6 +389,18 @@ button.danger {
   font-weight: 600;
   text-transform: uppercase;
   font-size: 0.8rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.packing-matrix th:first-child {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 12;
+  background: #f8f9fa;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .person-col-header {
@@ -425,6 +441,16 @@ button.danger {
 .packing-matrix td {
   padding: 1rem;
   border-bottom: 1px solid #eee;
+  background-color: var(--white, #ffffff);
+}
+
+.packing-matrix td:first-child,
+.packing-matrix td.item-name {
+  position: sticky;
+  left: 0;
+  z-index: 9;
+  background-color: var(--white, #ffffff);
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
 }
 
 .person-status-cell {
@@ -798,7 +824,13 @@ button.danger {
 }
 
 .group-gear-row {
-  background-color: rgba(240, 249, 255, 0.45);
+  background-color: #f0f9ff;
+}
+
+.group-gear-row td,
+.group-gear-row td:first-child,
+.group-gear-row td.item-name {
+  background-color: #f0f9ff;
 }
 
 .group-gear-summary {
@@ -2378,6 +2410,15 @@ select:focus {
     padding: 2rem 1rem;
   }
 
+  .matrix-wrapper {
+    max-height: calc(100vh - 140px);
+  }
+
+  .item-name {
+    min-width: 180px;
+    width: 30%;
+  }
+
   .packing-matrix th,
   .packing-matrix td {
     padding: 0.75rem;
@@ -2387,6 +2428,19 @@ select:focus {
 @media print {
   body {
     background: #fff;
+  }
+
+  .matrix-wrapper {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .packing-matrix th,
+  .packing-matrix td,
+  .packing-matrix th:first-child,
+  .packing-matrix td:first-child {
+    position: static !important;
+    box-shadow: none !important;
   }
 
   .trip-header,
