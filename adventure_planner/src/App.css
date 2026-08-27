@@ -3071,7 +3071,7 @@ select:focus {
 
 .day-summary-activities-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
   gap: 0.75rem;
 }
 
@@ -3121,19 +3121,30 @@ select:focus {
 
 .activity-metrics-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.25rem;
   margin-top: 0.2rem;
+  width: 100%;
 }
 
 .metric-pill {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
   background: #ffffff;
   color: #475569;
-  padding: 0.2rem 0.45rem;
+  padding: 0.18rem 0.25rem;
   border-radius: 4px;
   border: 1px solid #cbd5e1;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .metric-pill.gain {
