@@ -627,6 +627,7 @@ function App() {
   const [copyListDestinationTripId, setCopyListDestinationTripId] = useState('');
   const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [mapPickerDayId, setMapPickerDayId] = useState<string | null>(null);
+  const [editingDayId, setEditingDayId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1361,11 +1362,13 @@ function App() {
   };
 
   const addTripDay = () => {
+    const newDayId = generateId();
     updateCurrentTrip(trip => ({
       ...trip,
-      days: [...(trip.days || []), { id: generateId(), location: '' }],
+      days: [...(trip.days || []), { id: newDayId, location: '' }],
       lastModified: Date.now(),
     }));
+    setEditingDayId(newDayId);
   };
 
   const updateTripDayLocation = (dayId: string, location: string) => {
@@ -1379,6 +1382,9 @@ function App() {
   };
 
   const deleteTripDay = (dayId: string) => {
+    if (editingDayId === dayId) {
+      setEditingDayId(null);
+    }
     updateCurrentTrip(trip => ({
       ...trip,
       days: (trip.days || []).filter(day => day.id !== dayId),
@@ -2717,7 +2723,7 @@ function App() {
                   {(currentTrip.days || []).map((day, index) => (
                     <div
                       key={day.id}
-                      className={`day-row ${draggedDayId === day.id ? 'dragging' : ''} ${dragOverDayId === day.id ? 'drag-over' : ''}`}
+                      className={`day-summary-card ${draggedDayId === day.id ? 'dragging' : ''} ${dragOverDayId === day.id ? 'drag-over' : ''}`}
                       draggable
                       onDragStart={() => setDraggedDayId(day.id)}
                       onDragEnd={() => setDraggedDayId(null)}
@@ -2733,165 +2739,276 @@ function App() {
                         setDragOverDayId(null);
                       }}
                     >
-                      <div className="day-number">Day {index + 1}</div>
-                      <div className="day-content">
-                        <div className="day-inputs">
-                          <label className="day-field">
-                            <span className="day-field-label">Location</span>
-                            <div className="day-location-row">
-                              <input
-                                type="text"
-                                className="day-location-input"
-                                placeholder="e.g. Boulder, CO or 40.1234, -105.1234"
-                                value={day.location}
-                                onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    (e.target as HTMLInputElement).blur();
-                                  }
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="map-picker-btn"
-                                title="Pick location on map"
-                                onClick={() => setMapPickerDayId(day.id)}
-                              >
-                                📍
-                              </button>
-                            </div>
-                          </label>
-                          <label className="day-field day-description-field">
-                            <span className="day-field-label">Description</span>
-                            <textarea
-                              className="day-description-input"
-                              placeholder="Describe the plan for this day..."
-                              value={day.description || ''}
-                              onChange={(e) => {
-                                updateCurrentTrip(trip => {
-                                  const days = [...(trip.days || [])];
-                                  days[index] = {
-                                    ...days[index],
-                                    description: e.target.value
-                                  };
-                                  return { ...trip, days, lastModified: Date.now() };
-                                });
-                              }}
-                            />
-                          </label>
+                      <div className="day-summary-header">
+                        <div className="day-title-badge">
+                          <span className="drag-handle" title="Drag to reorder">⋮⋮</span>
+                          <h3>Day {index + 1}</h3>
+                        </div>
+                        <div className="day-summary-actions">
+                          <button
+                            type="button"
+                            className="day-gear-btn"
+                            onClick={() => setEditingDayId(day.id)}
+                            title="Edit Day details"
+                          >
+                            ⚙️ Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="delete-tab-btn"
+                            onClick={() => deleteTripDay(day.id)}
+                            title="Remove Day"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="day-summary-body">
+                        <div className="day-summary-location">
+                          <span className="location-icon">📍</span>
+                          <span className="location-text">
+                            {day.location ? day.location : <em className="placeholder-text">No location specified</em>}
+                          </span>
                         </div>
 
-                        <div className="day-activities">
-                          <div className="day-activities-header">
-                            <h3>Activities</h3>
+                        {day.description && (
+                          <div className="day-summary-description">
+                            <p>{day.description}</p>
                           </div>
-                          {(day.activities || []).length === 0 ? (
-                            <p className="empty-activities">No activities yet.</p>
+                        )}
+
+                        <div className="day-summary-activities">
+                          <div className="day-summary-activities-title">
+                            Activities ({(day.activities || []).length})
+                          </div>
+                          {(!day.activities || day.activities.length === 0) ? (
+                            <p className="no-activities-text">No activities planned for this day.</p>
                           ) : (
-                            <div className="activity-list">
-                              {(day.activities || []).map((activity, activityIndex) => (
-                                <div key={activity.id} className="activity-row">
-                                  <div className="activity-number">Activity {activityIndex + 1}</div>
-                                  <div className="activity-fields">
-                                    <label className="day-field">
-                                      <span className="day-field-label">Type</span>
-                                      <select
-                                        value={activity.type}
-                                        onChange={(e) => {
-                                          const selectedValue = e.target.value;
-                                          if (selectedValue === 'custom') {
-                                            const customType = promptForCustomActivityType(activity.type);
-                                            if (customType) {
-                                              updateTripDayActivity(day.id, activity.id, { type: customType });
-                                            }
-                                          } else {
-                                            updateTripDayActivity(day.id, activity.id, { type: selectedValue as any });
-                                          }
-                                        }}
-                                      >
-                                        <option value="hiking">Hiking</option>
-                                        <option value="ski-touring">Ski Touring</option>
-                                        {activity.type !== 'hiking' && activity.type !== 'ski-touring' && activity.type !== 'custom' && (
-                                          <option value={activity.type}>{activity.type}</option>
-                                        )}
-                                        <option value="custom">Custom</option>
-                                      </select>
-                                    </label>
-                                    <label className="day-field">
-                                      <span className="day-field-label">Importance</span>
-                                      <select
-                                        value={activity.importance}
-                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { importance: e.target.value as any })}
-                                      >
-                                        <option value="mandatory">Mandatory</option>
-                                        <option value="optional">Optional</option>
-                                      </select>
-                                    </label>
-                                    <label className="day-field activity-description-field">
-                                      <span className="day-field-label">Description</span>
-                                      <textarea
-                                        placeholder="Describe this activity..."
-                                        value={activity.description}
-                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { description: e.target.value })}
-                                      />
-                                    </label>
-                                    <label className="day-field">
-                                      <span className="day-field-label">Miles</span>
-                                      <input
-                                        type="text"
-                                        placeholder="Miles"
-                                        value={activity.miles}
-                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { miles: e.target.value })}
-                                      />
-                                    </label>
-                                    <label className="day-field">
-                                      <span className="day-field-label">Elevation Gain</span>
-                                      <input
-                                        type="text"
-                                        placeholder="Elevation gain"
-                                        value={activity.elevationGain}
-                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { elevationGain: e.target.value })}
-                                      />
-                                    </label>
-                                    <label className="day-field">
-                                      <span className="day-field-label">Elevation Lost</span>
-                                      <input
-                                        type="text"
-                                        placeholder="Elevation lost"
-                                        value={activity.elevationLost}
-                                        onChange={(e) => updateTripDayActivity(day.id, activity.id, { elevationLost: e.target.value })}
-                                      />
-                                    </label>
+                            <div className="day-summary-activities-grid">
+                              {day.activities.map((act) => (
+                                <div key={act.id} className="activity-summary-card">
+                                  <div className="activity-summary-header">
+                                    <span className="activity-type-badge">
+                                      {act.type === 'hiking' ? '🥾 Hiking' : act.type === 'ski-touring' ? '🎿 Ski Touring' : `🎯 ${act.type}`}
+                                    </span>
+                                    <span className={`activity-importance-pill ${act.importance}`}>
+                                      {act.importance}
+                                    </span>
                                   </div>
-                                  <button
-                                    type="button"
-                                    className="delete-activity-btn"
-                                    onClick={() => deleteTripDayActivity(day.id, activity.id)}
-                                    title="Remove activity"
-                                  >
-                                    ×
-                                  </button>
+
+                                  {(act.miles || act.elevationGain || act.elevationLost) && (
+                                    <div className="activity-metrics-row">
+                                      {act.miles && <span className="metric-pill">📏 {act.miles} mi</span>}
+                                      {act.elevationGain && <span className="metric-pill gain">📈 +{act.elevationGain} ft</span>}
+                                      {act.elevationLost && <span className="metric-pill loss">📉 -{act.elevationLost} ft</span>}
+                                    </div>
+                                  )}
+
+                                  {act.description && (
+                                    <p className="activity-summary-desc">{act.description}</p>
+                                  )}
                                 </div>
                               ))}
                             </div>
                           )}
-                          <div className="add-activity-container" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
-                            <button
-                              type="button"
-                              className="add-activity-btn"
-                              onClick={() => addTripDayActivity(day.id)}
-                            >
-                              + Add Activity
-                            </button>
-                          </div>
                         </div>
                       </div>
-                      <button className="delete-tab-btn" onClick={() => deleteTripDay(day.id)} title="Remove Day">×</button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+
+            {(() => {
+              const editingDay = (currentTrip.days || []).find(d => d.id === editingDayId);
+              const editingDayIndex = (currentTrip.days || []).findIndex(d => d.id === editingDayId);
+              if (!editingDay || editingDayIndex === -1) return null;
+
+              return (
+                <div
+                  className="day-edit-modal-overlay"
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) setEditingDayId(null);
+                  }}
+                >
+                  <div className="day-edit-modal-content">
+                    <div className="day-edit-modal-header">
+                      <h2>Edit Day {editingDayIndex + 1}</h2>
+                      <button
+                        type="button"
+                        className="day-edit-modal-close"
+                        onClick={() => setEditingDayId(null)}
+                        title="Close modal"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="day-edit-modal-body">
+                      <label className="day-field">
+                        <span className="day-field-label">Location</span>
+                        <div className="day-location-row">
+                          <input
+                            type="text"
+                            className="day-location-input"
+                            placeholder="e.g. Boulder, CO or 40.1234, -105.1234"
+                            value={editingDay.location}
+                            onChange={(e) => updateTripDayLocation(editingDay.id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="map-picker-btn"
+                            title="Pick location on map"
+                            onClick={() => setMapPickerDayId(editingDay.id)}
+                          >
+                            📍
+                          </button>
+                        </div>
+                      </label>
+
+                      <label className="day-field day-description-field">
+                        <span className="day-field-label">Description</span>
+                        <textarea
+                          className="day-description-input"
+                          placeholder="Describe the plan for this day..."
+                          value={editingDay.description || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateCurrentTrip(trip => {
+                              const days = [...(trip.days || [])];
+                              const targetIdx = days.findIndex(d => d.id === editingDay.id);
+                              if (targetIdx !== -1) {
+                                days[targetIdx] = { ...days[targetIdx], description: val };
+                              }
+                              return { ...trip, days, lastModified: Date.now() };
+                            });
+                          }}
+                        />
+                      </label>
+
+                      <div className="day-activities">
+                        <div className="day-activities-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <h3>Activities ({(editingDay.activities || []).length})</h3>
+                          <button
+                            type="button"
+                            className="add-activity-btn"
+                            onClick={() => addTripDayActivity(editingDay.id)}
+                          >
+                            + Add Activity
+                          </button>
+                        </div>
+                        {(!editingDay.activities || editingDay.activities.length === 0) ? (
+                          <p className="empty-activities">No activities yet.</p>
+                        ) : (
+                          <div className="activity-list">
+                            {editingDay.activities.map((activity, activityIndex) => (
+                              <div key={activity.id} className="activity-row">
+                                <div className="activity-number">Activity {activityIndex + 1}</div>
+                                <div className="activity-fields">
+                                  <label className="day-field">
+                                    <span className="day-field-label">Type</span>
+                                    <select
+                                      value={activity.type}
+                                      onChange={(e) => {
+                                        const selectedValue = e.target.value;
+                                        if (selectedValue === 'custom') {
+                                          const customType = promptForCustomActivityType(activity.type);
+                                          if (customType) {
+                                            updateTripDayActivity(editingDay.id, activity.id, { type: customType });
+                                          }
+                                        } else {
+                                          updateTripDayActivity(editingDay.id, activity.id, { type: selectedValue as any });
+                                        }
+                                      }}
+                                    >
+                                      <option value="hiking">Hiking</option>
+                                      <option value="ski-touring">Ski Touring</option>
+                                      {activity.type !== 'hiking' && activity.type !== 'ski-touring' && activity.type !== 'custom' && (
+                                        <option value={activity.type}>{activity.type}</option>
+                                      )}
+                                      <option value="custom">Custom</option>
+                                    </select>
+                                  </label>
+                                  <label className="day-field">
+                                    <span className="day-field-label">Importance</span>
+                                    <select
+                                      value={activity.importance}
+                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { importance: e.target.value as any })}
+                                    >
+                                      <option value="mandatory">Mandatory</option>
+                                      <option value="optional">Optional</option>
+                                    </select>
+                                  </label>
+                                  <label className="day-field activity-description-field">
+                                    <span className="day-field-label">Description</span>
+                                    <textarea
+                                      placeholder="Describe this activity..."
+                                      value={activity.description}
+                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { description: e.target.value })}
+                                    />
+                                  </label>
+                                  <label className="day-field">
+                                    <span className="day-field-label">Miles</span>
+                                    <input
+                                      type="text"
+                                      placeholder="Miles"
+                                      value={activity.miles}
+                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { miles: e.target.value })}
+                                    />
+                                  </label>
+                                  <label className="day-field">
+                                    <span className="day-field-label">Elevation Gain</span>
+                                    <input
+                                      type="text"
+                                      placeholder="Elevation gain"
+                                      value={activity.elevationGain}
+                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { elevationGain: e.target.value })}
+                                    />
+                                  </label>
+                                  <label className="day-field">
+                                    <span className="day-field-label">Elevation Lost</span>
+                                    <input
+                                      type="text"
+                                      placeholder="Elevation lost"
+                                      value={activity.elevationLost}
+                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { elevationLost: e.target.value })}
+                                    />
+                                  </label>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="delete-activity-btn"
+                                  onClick={() => deleteTripDayActivity(editingDay.id, activity.id)}
+                                  title="Remove activity"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="day-edit-modal-footer">
+                      <button
+                        type="button"
+                        className="day-edit-done-btn"
+                        onClick={() => setEditingDayId(null)}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         ) : activeCategory ? (
           <div className="packing-view">
