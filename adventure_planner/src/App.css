@@ -2943,35 +2943,31 @@ select:focus {
   flex-direction: column;
   gap: 1rem;
   transition: all 0.2s ease;
-  cursor: grab;
+  cursor: default;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
-.day-summary-card:active {
-  cursor: grabbing;
+.description-link {
+  color: #0284c7;
+  text-decoration: underline;
+  word-break: break-all;
+  cursor: pointer;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
-.day-summary-card.dragging {
-  opacity: 0.5;
-  background: rgba(39, 174, 96, 0.08);
+.description-link:hover {
+  color: #0369a1;
+  text-decoration: underline;
 }
 
-.day-summary-card.drag-over {
-  background: rgba(39, 174, 96, 0.12);
-  border: 2px dashed var(--accent-color);
-}
-
-.day-summary-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 0.75rem;
-}
-
-.day-title-badge {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.day-summary-body,
+.day-summary-description,
+.activity-summary-desc,
+.item-desc-text {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .drag-handle {
@@ -2979,6 +2975,17 @@ select:focus {
   font-size: 1.1rem;
   cursor: grab;
   user-select: none;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+}
+
+.drag-handle:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 .day-title-badge h3 {

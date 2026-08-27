@@ -186,6 +186,33 @@ const formatWeight = (oz: number): string => {
   return `${parseFloat(oz.toFixed(1))} oz`;
 };
 
+// Render text with clickable links for any URLs
+const renderTextWithLinks = (text?: string) => {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/g;
+  const parts = text.split(urlRegex);
+
+  return parts.map((part, index) => {
+    if (part.match(/^https?:\/\/[^\s]+$/) || part.match(/^www\.[^\s]+$/)) {
+      const href = part.startsWith('www.') ? `https://${part}` : part;
+      return (
+        <a
+          key={index}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="description-link"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+
 interface PersonPackingStats {
   personId: string;
   packedCount: number;   // fully-packed + in-car
@@ -2724,9 +2751,6 @@ function App() {
                     <div
                       key={day.id}
                       className={`day-summary-card ${draggedDayId === day.id ? 'dragging' : ''} ${dragOverDayId === day.id ? 'drag-over' : ''}`}
-                      draggable
-                      onDragStart={() => setDraggedDayId(day.id)}
-                      onDragEnd={() => setDraggedDayId(null)}
                       onDragOver={(e) => {
                         e.preventDefault();
                         setDragOverDayId(day.id);
@@ -2741,7 +2765,21 @@ function App() {
                     >
                       <div className="day-summary-header">
                         <div className="day-title-badge">
-                          <span className="drag-handle" title="Drag to reorder">⋮⋮</span>
+                          <span
+                            className="drag-handle"
+                            title="Drag to reorder"
+                            draggable
+                            onDragStart={(e) => {
+                              e.stopPropagation();
+                              setDraggedDayId(day.id);
+                            }}
+                            onDragEnd={(e) => {
+                              e.stopPropagation();
+                              setDraggedDayId(null);
+                            }}
+                          >
+                            ⋮⋮
+                          </span>
                           <h3>Day {index + 1}</h3>
                         </div>
                         <div className="day-summary-actions">
@@ -2768,13 +2806,13 @@ function App() {
                         <div className="day-summary-location">
                           <span className="location-icon">📍</span>
                           <span className="location-text">
-                            {day.location ? day.location : <em className="placeholder-text">No location specified</em>}
+                            {day.location ? renderTextWithLinks(day.location) : <em className="placeholder-text">No location specified</em>}
                           </span>
                         </div>
 
                         {day.description && (
                           <div className="day-summary-description">
-                            <p>{day.description}</p>
+                            <p>{renderTextWithLinks(day.description)}</p>
                           </div>
                         )}
 
@@ -2806,7 +2844,7 @@ function App() {
                                   )}
 
                                   {act.description && (
-                                    <p className="activity-summary-desc">{act.description}</p>
+                                    <p className="activity-summary-desc">{renderTextWithLinks(act.description)}</p>
                                   )}
                                 </div>
                               ))}
@@ -3110,7 +3148,7 @@ function App() {
                               )}
                             </div>
                             {item.description && (
-                              <div className="item-desc-text">{item.description}</div>
+                              <div className="item-desc-text">{renderTextWithLinks(item.description)}</div>
                             )}
 
                             <div className="group-gear-toggle-container">
