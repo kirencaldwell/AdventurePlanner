@@ -2982,88 +2982,90 @@ function App() {
                   {activeCategory.items.map(item => (
                     <tr key={item.id} className={item.isGroupGear ? 'group-gear-row' : ''}>
                       <td className="item-name">
-                        <div className="item-name-text">
-                          <div className="item-name-title-row">
-                            <span className="item-name-title">{item.name}</span>
-                            {(item.weight !== undefined && item.weight !== null && item.weight !== '') && (
-                              <span className="item-weight-pill">
-                                ⚖️ {item.weight} {item.weightUnit || 'oz'}
-                              </span>
+                        <div className="item-name-cell-content">
+                          <div className="item-name-text">
+                            <div className="item-name-title-row">
+                              <span className="item-name-title">{item.name}</span>
+                              {(item.weight !== undefined && item.weight !== null && item.weight !== '') && (
+                                <span className="item-weight-pill">
+                                  ⚖️ {item.weight} {item.weightUnit || 'oz'}
+                                </span>
+                              )}
+                            </div>
+                            {item.description && (
+                              <div className="item-desc-text">{item.description}</div>
                             )}
-                          </div>
-                          {item.description && (
-                            <div className="item-desc-text">{item.description}</div>
-                          )}
 
-                          <div className="group-gear-toggle-container">
-                            <label className={`group-gear-checkbox-label ${item.isGroupGear ? 'checked' : ''}`}>
-                              <input
-                                type="checkbox"
-                                checked={Boolean(item.isGroupGear)}
-                                onChange={(e) => toggleGroupGear(activeCategory.id, item.id, e.target.checked)}
-                              />
-                              <span className="group-gear-checkbox-text">Group Gear</span>
-                            </label>
-                          </div>
+                            <div className="group-gear-toggle-container">
+                              <label className={`group-gear-checkbox-label ${item.isGroupGear ? 'checked' : ''}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(item.isGroupGear)}
+                                  onChange={(e) => toggleGroupGear(activeCategory.id, item.id, e.target.checked)}
+                                />
+                                <span className="group-gear-checkbox-text">Group Gear</span>
+                              </label>
+                            </div>
 
-                          {item.isGroupGear && (
-                            <div className="group-gear-fields">
-                              <div className="group-gear-field">
-                                <label htmlFor={`brought-by-${item.id}`}>Brought by:</label>
-                                <select
-                                  id={`brought-by-${item.id}`}
-                                  className="group-gear-select"
-                                  value={item.broughtByPersonId || ''}
-                                  onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'broughtByPersonId', e.target.value || undefined)}
-                                >
-                                  <option value="">None</option>
-                                  {currentTrip.people.map(person => (
-                                    <option key={person.id} value={person.id}>{person.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="group-gear-field">
-                                <label htmlFor={`carried-by-${item.id}`}>Carried by:</label>
-                                <select
-                                  id={`carried-by-${item.id}`}
-                                  className="group-gear-select"
-                                  value={item.carriedByPersonId || ''}
-                                  onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'carriedByPersonId', e.target.value || undefined)}
-                                >
-                                  <option value="">None</option>
-                                  {currentTrip.people.map(person => (
-                                    <option key={person.id} value={person.id}>{person.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="group-gear-field group-gear-field-for">
-                                <label>For:</label>
-                                <div className="group-gear-for-container">
-                                  {currentTrip.people.map(person => {
-                                    const isSelected = item.forPersonIds?.includes(person.id) || false;
-                                    return (
-                                      <label key={person.id} className={`group-gear-for-checkbox-label ${isSelected ? 'selected' : ''}`}>
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={(e) => toggleForPerson(activeCategory.id, item.id, person.id, e.target.checked)}
-                                        />
-                                        <span>{person.name}</span>
-                                      </label>
-                                    );
-                                  })}
+                            {item.isGroupGear && (
+                              <div className="group-gear-fields">
+                                <div className="group-gear-field">
+                                  <label htmlFor={`brought-by-${item.id}`}>Brought by:</label>
+                                  <select
+                                    id={`brought-by-${item.id}`}
+                                    className="group-gear-select"
+                                    value={item.broughtByPersonId || ''}
+                                    onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'broughtByPersonId', e.target.value || undefined)}
+                                  >
+                                    <option value="">None</option>
+                                    {currentTrip.people.map(person => (
+                                      <option key={person.id} value={person.id}>{person.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="group-gear-field">
+                                  <label htmlFor={`carried-by-${item.id}`}>Carried by:</label>
+                                  <select
+                                    id={`carried-by-${item.id}`}
+                                    className="group-gear-select"
+                                    value={item.carriedByPersonId || ''}
+                                    onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'carriedByPersonId', e.target.value || undefined)}
+                                  >
+                                    <option value="">None</option>
+                                    {currentTrip.people.map(person => (
+                                      <option key={person.id} value={person.id}>{person.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="group-gear-field group-gear-field-for">
+                                  <label>For:</label>
+                                  <div className="group-gear-for-container">
+                                    {currentTrip.people.map(person => {
+                                      const isSelected = item.forPersonIds?.includes(person.id) || false;
+                                      return (
+                                        <label key={person.id} className={`group-gear-for-checkbox-label ${isSelected ? 'selected' : ''}`}>
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={(e) => toggleForPerson(activeCategory.id, item.id, person.id, e.target.checked)}
+                                          />
+                                          <span>{person.name}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
+                          <button
+                            className="delete-item-btn"
+                            onClick={() => deleteItem(activeCategory.id, item.id)}
+                            title={`Delete ${item.name}`}
+                          >
+                            ×
+                          </button>
                         </div>
-                        <button
-                          className="delete-item-btn"
-                          onClick={() => deleteItem(activeCategory.id, item.id)}
-                          title={`Delete ${item.name}`}
-                        >
-                          ×
-                        </button>
                       </td>
                       {currentTrip.people.map(person => {
                         const personStatus = item.personStatuses[person.id] || 'not-packed';

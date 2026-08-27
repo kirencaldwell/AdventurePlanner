@@ -442,6 +442,7 @@ button.danger {
   padding: 1rem;
   border-bottom: 1px solid #eee;
   background-color: var(--white, #ffffff);
+  vertical-align: top;
 }
 
 .packing-matrix td:first-child,
@@ -662,6 +663,10 @@ button.danger {
   color: #2c3e50;
   min-width: 240px;
   width: 32%;
+  vertical-align: top;
+}
+
+.item-name-cell-content {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
