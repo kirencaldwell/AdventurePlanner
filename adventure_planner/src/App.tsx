@@ -2248,7 +2248,10 @@ function App() {
         </button>
       </div>
       <div className="nav-user-section">
-        <span className="user-email-text">Logged in as: <strong>{user.email}</strong></span>
+        <span className="user-email-text" title={user.email || ''}>
+          <span className="logged-in-label">Logged in as: </span>
+          <strong className="user-email-strong">{user.email}</strong>
+        </span>
         <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
       </div>
     </nav>

@@ -2722,10 +2722,11 @@ select:focus {
 .global-nav {
   background: #1e293b;
   color: #ffffff;
-  padding: 0.75rem 1.5rem;
+  padding: 0.6rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   border-bottom: 1px solid #334155;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   position: sticky;
@@ -2736,17 +2737,18 @@ select:focus {
 .nav-brand {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   cursor: pointer;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .brand-logo {
-  font-size: 1.35rem;
+  font-size: 1.25rem;
 }
 
 .brand-name {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.02em;
@@ -2755,26 +2757,28 @@ select:focus {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   background: #0f172a;
-  padding: 0.25rem;
+  padding: 0.2rem;
   border-radius: 10px;
   border: 1px solid #334155;
+  flex-shrink: 0;
 }
 
 .nav-link-btn {
   background: transparent;
   color: #94a3b8;
   border: none;
-  padding: 0.45rem 1.1rem;
+  padding: 0.4rem 0.85rem;
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
+  white-space: nowrap;
 }
 
 .nav-link-btn:hover {
@@ -2791,12 +2795,68 @@ select:focus {
 .nav-user-section {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .user-email-text {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.user-email-strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-user-section .logout-btn {
+  flex-shrink: 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .global-app-nav,
+  .global-nav {
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .brand-name {
+    font-size: 0.95rem;
+  }
+
+  .nav-link-btn {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .logged-in-label {
+    display: none;
+  }
+
+  .user-email-text {
+    max-width: 130px;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-name {
+    display: none;
+  }
+
+  .user-email-text {
+    max-width: 90px;
+  }
 }
 
 /* Category Header & Add Bar */
