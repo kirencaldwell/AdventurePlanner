@@ -2248,7 +2248,7 @@ function App() {
         </button>
       </div>
       <div className="nav-user-section">
-        <span className="user-email-text">{user.email}</span>
+        <span className="user-email-text">Logged in as: <strong>{user.email}</strong></span>
         <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
       </div>
     </nav>
@@ -2333,10 +2333,6 @@ function App() {
     <div className="app-container">
       <GlobalNav />
       <header className="trip-header">
-        <div className="user-profile-bar">
-          <span className="user-email">Logged in as: <strong>{user.email}</strong></span>
-          <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
-        </div>
         <div className="trip-info">
           <button onClick={() => setView('dashboard')} className="back-to-list-btn">← Back to List</button>
           <div className="trip-title-block">
