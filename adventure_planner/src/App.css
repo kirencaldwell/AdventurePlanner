@@ -8,8 +8,12 @@
   --shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--primary-bg);
   color: var(--text-color);
@@ -19,6 +23,9 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .trip-header {
@@ -292,6 +299,7 @@ button.danger {
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .category-header {
@@ -2273,10 +2281,9 @@ select:focus {
   .weather-cards-container {
     grid-template-columns: 1fr;
     gap: 1rem;
-    /* Stretch to the edge of the screen on mobile */
-    margin-left: -1rem;
-    margin-right: -1rem;
-    width: calc(100% + 2rem);
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
   }
 
   .weather-card {
