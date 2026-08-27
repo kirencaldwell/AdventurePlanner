@@ -2977,6 +2977,9 @@ select:focus {
   user-select: none;
   padding: 0.2rem 0.3rem;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
 
 .drag-handle:hover {
@@ -2988,11 +2991,24 @@ select:focus {
   cursor: grabbing;
 }
 
+.day-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.day-title-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .day-title-badge h3 {
   margin: 0;
   font-size: 1.15rem;
   color: #1e293b;
   font-weight: 700;
+  line-height: 1;
 }
 
 .day-summary-actions {
@@ -3019,6 +3035,26 @@ select:focus {
 .day-gear-btn:hover {
   background: #e2e8f0;
   color: #0f172a;
+}
+
+.day-remove-btn {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  padding: 0.4rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.15s ease;
+}
+
+.day-remove-btn:hover {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .day-summary-body {
