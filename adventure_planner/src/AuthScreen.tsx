@@ -6,10 +6,30 @@ export function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const hasTripLink = Boolean(
+    params?.get('trip') ||
+    params?.get('tripId') ||
+    params?.get('join') ||
+    (typeof window !== 'undefined' && window.location.pathname.match(/^\/trip\/([^/?#]+)/))
+  );
+
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
     try {
+      if (typeof window !== 'undefined') {
+        const rawTrip = params?.get('trip') ||
+          params?.get('tripId') ||
+          params?.get('join') ||
+          window.location.pathname.match(/^\/trip\/([^/?#]+)/)?.[1];
+        if (rawTrip) {
+          try {
+            sessionStorage.setItem('pending_trip_link', decodeURIComponent(rawTrip).trim());
+          } catch {}
+        }
+      }
+
       const redirectTarget = `${window.location.origin}/?auth=google`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -41,7 +61,11 @@ export function AuthScreen() {
 
         <div className="auth-form">
           <h2>Welcome</h2>
-          <p className="auth-subtitle">Sign in with your Google account to securely manage and share your adventure trips.</p>
+          <p className="auth-subtitle">
+            {hasTripLink
+              ? 'Sign in with your Google account to view this trip.'
+              : 'Sign in with your Google account to securely manage and share your adventure trips.'}
+          </p>
           
           {error && <div className="auth-alert error">{error}</div>}
 

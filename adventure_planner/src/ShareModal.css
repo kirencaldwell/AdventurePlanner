@@ -86,9 +86,32 @@
   line-height: 1.4;
 }
 
+.trip-link-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-link-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: #0d1117;
+  border: 1px solid rgba(240, 246, 252, 0.15);
+  border-radius: 8px;
+  color: #79c0ff;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: text;
+}
+
+.trip-link-input:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
 .copy-link-btn {
   width: 100%;
-  padding: 12px;
+  padding: 10px 14px;
   background: #21262d;
   border: 1px solid rgba(240, 246, 252, 0.1);
   border-radius: 8px;
@@ -96,6 +119,10 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .copy-link-btn:hover {
