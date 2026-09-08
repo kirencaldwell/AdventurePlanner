@@ -27,13 +27,38 @@ const generateId = () => {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const isUuid = (value: string | null | undefined): value is string => {
+export const isUuid = (value: string | null | undefined): value is string => {
   return Boolean(value && UUID_PATTERN.test(value));
 };
 
-const clearJoinParam = () => {
+export const getTripIdFromUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const tripParam = params.get('trip') || params.get('tripId') || params.get('join');
+  if (tripParam && tripParam.trim()) {
+    return tripParam.trim();
+  }
+  const match = window.location.pathname.match(/^\/trip\/([^/?#]+)/);
+  if (match) {
+    return decodeURIComponent(match[1]).trim();
+  }
+  return null;
+};
+
+export const getTripUrl = (tripId: string): string => {
+  if (typeof window === 'undefined') return `/?trip=${encodeURIComponent(tripId)}`;
+  return `${window.location.origin}/?trip=${encodeURIComponent(tripId)}`;
+};
+
+const clearTripParamsFromUrl = () => {
+  if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
+  url.searchParams.delete('trip');
+  url.searchParams.delete('tripId');
   url.searchParams.delete('join');
+  if (url.pathname.startsWith('/trip/')) {
+    url.pathname = '/';
+  }
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
 };
 
@@ -102,9 +127,19 @@ const STORAGE_KEYS = {
 const getStoredViewState = (): { view: 'dashboard' | 'trip-detail' | 'gear-closet'; currentTripId: string | null; activeTab: string } | null => {
   if (typeof window === 'undefined') return null;
   try {
+    const urlTripId = getTripIdFromUrl();
     const savedView = window.sessionStorage.getItem(STORAGE_KEYS.view);
     const savedTripId = window.sessionStorage.getItem(STORAGE_KEYS.currentTripId);
     const savedActiveTab = window.sessionStorage.getItem(STORAGE_KEYS.activeTab);
+
+    if (urlTripId) {
+      return {
+        view: 'trip-detail',
+        currentTripId: urlTripId,
+        activeTab: savedActiveTab || 'trip',
+      };
+    }
+
     return {
       view: savedView === 'trip-detail' ? 'trip-detail' : savedView === 'gear-closet' ? 'gear-closet' : 'dashboard',
       currentTripId: savedTripId || null,
@@ -508,6 +543,7 @@ const TripDashboard = ({
   onRefreshAllWeather,
   forecastData,
   onOpenWeatherDetail,
+  onCopyTripLink,
 }: {
   trips: Trip[];
   onViewTrip: (id: string) => void;
@@ -515,6 +551,7 @@ const TripDashboard = ({
   onRefreshAllWeather: () => void;
   forecastData: Record<string, StartingDayForecast[]>;
   onOpenWeatherDetail: (trip: Trip, forecastDate: string) => void;
+  onCopyTripLink: (tripId: string) => void;
 }) => (
   <div className="dashboard-container">
     <header className="dashboard-header">
@@ -541,6 +578,17 @@ const TripDashboard = ({
               <div className="trip-card-overview">
                 <div className="trip-card-header">
                   <h2>{trip.name}</h2>
+                  <button
+                    type="button"
+                    className="trip-card-copy-btn"
+                    title="Copy direct link to this trip"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCopyTripLink(trip.id);
+                    }}
+                  >
+                    🔗 Copy Link
+                  </button>
                 </div>
                 <div className="trip-card-badges">
                           <span className="weather-status-badge" style={{ background: statusColor }}>
@@ -655,6 +703,32 @@ function App() {
   const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [mapPickerDayId, setMapPickerDayId] = useState<string | null>(null);
   const [editingDayId, setEditingDayId] = useState<string | null>(null);
+  const [accessDeniedTrip, setAccessDeniedTrip] = useState<{ id: string } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [copiedTripLink, setCopiedTripLink] = useState(false);
+
+  const handleCopyTripLink = (tripIdToCopy?: string) => {
+    const id = tripIdToCopy || currentTripId;
+    if (!id) return;
+    const link = getTripUrl(id);
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedTripLink(true);
+      setToastMessage('Trip link copied to clipboard!');
+      setTimeout(() => setCopiedTripLink(false), 2000);
+      setTimeout(() => setToastMessage(null), 2500);
+    }).catch(() => {
+      setToastMessage('Link: ' + link);
+      setTimeout(() => setToastMessage(null), 4000);
+    });
+  };
+
+  const navigateToDashboard = () => {
+    setAccessDeniedTrip(null);
+    setCurrentTripId(null);
+    setView('dashboard');
+    setActiveTab('trip');
+    clearTripParamsFromUrl();
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -662,12 +736,39 @@ function App() {
       window.sessionStorage.setItem(STORAGE_KEYS.view, view);
       window.sessionStorage.setItem(STORAGE_KEYS.currentTripId, currentTripId || '');
       window.sessionStorage.setItem(STORAGE_KEYS.activeTab, activeTab);
+
       if (!historyInitialized) return;
+
+      const url = new URL(window.location.href);
+      if (view === 'trip-detail' && currentTripId) {
+        url.searchParams.set('trip', currentTripId);
+        url.searchParams.delete('tripId');
+        url.searchParams.delete('join');
+        url.searchParams.delete('view');
+      } else if (view === 'gear-closet') {
+        url.searchParams.set('view', 'gear-closet');
+        url.searchParams.delete('trip');
+        url.searchParams.delete('tripId');
+        url.searchParams.delete('join');
+      } else {
+        url.searchParams.delete('trip');
+        url.searchParams.delete('tripId');
+        url.searchParams.delete('join');
+        url.searchParams.delete('view');
+      }
+
+      if (url.pathname.startsWith('/trip/')) {
+        url.pathname = '/';
+      }
+
+      const targetUrl = `${url.pathname}${url.search}${url.hash}`;
+      const currentFull = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
       if (isHandlingPopState.current) {
         isHandlingPopState.current = false;
-      } else {
+      } else if (currentFull !== targetUrl) {
         const state = { view, currentTripId, activeTab };
-        window.history.pushState(state, document.title, window.location.pathname);
+        window.history.pushState(state, document.title, targetUrl);
       }
     } catch {
       // Ignore storage errors so the app can keep working.
@@ -678,22 +779,47 @@ function App() {
     if (typeof window === 'undefined') return;
 
     const handlePopState = (event: PopStateEvent) => {
-      if (!event.state) {
-        setView('dashboard');
-        setCurrentTripId(null);
-        setActiveTab('trip');
+      isHandlingPopState.current = true;
+      setAccessDeniedTrip(null);
+
+      if (event.state) {
+        const nextState = event.state as { view: 'dashboard' | 'trip-detail' | 'gear-closet'; currentTripId: string | null; activeTab: string };
+        setView(nextState.view);
+        setCurrentTripId(nextState.currentTripId);
+        setActiveTab(nextState.activeTab || 'trip');
         return;
       }
 
-      isHandlingPopState.current = true;
-      const nextState = event.state as { view: 'dashboard' | 'trip-detail'; currentTripId: string | null; activeTab: string };
-      setView(nextState.view);
-      setCurrentTripId(nextState.currentTripId);
-      setActiveTab(nextState.activeTab);
+      const urlTripId = getTripIdFromUrl();
+      if (urlTripId) {
+        setView('trip-detail');
+        setCurrentTripId(urlTripId);
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('view') === 'gear-closet') {
+        setView('gear-closet');
+        setCurrentTripId(null);
+      } else {
+        setView('dashboard');
+        setCurrentTripId(null);
+        setActiveTab('trip');
+      }
     };
 
-    const initialState = { view, currentTripId, activeTab };
-    window.history.replaceState(initialState, document.title, window.location.pathname);
+    const initialTripId = getTripIdFromUrl() || currentTripId;
+    const initialUrl = new URL(window.location.href);
+    if (view === 'trip-detail' && initialTripId) {
+      initialUrl.searchParams.set('trip', initialTripId);
+      initialUrl.searchParams.delete('tripId');
+      initialUrl.searchParams.delete('join');
+    }
+    if (initialUrl.pathname.startsWith('/trip/')) {
+      initialUrl.pathname = '/';
+    }
+    const initialState = { view, currentTripId: initialTripId, activeTab };
+    window.history.replaceState(initialState, document.title, `${initialUrl.pathname}${initialUrl.search}${initialUrl.hash}`);
     window.addEventListener('popstate', handlePopState);
     setHistoryInitialized(true);
 
@@ -734,26 +860,40 @@ function App() {
     if (!user) {
       setTrips([]);
       setCurrentTripId(null);
+      setAccessDeniedTrip(null);
       return;
     }
 
+    const pendingTripId = typeof window !== 'undefined'
+      ? (getTripIdFromUrl() || sessionStorage.getItem('pending_trip_link'))
+      : null;
+
     if (!hasForcedDashboard) {
-      const restoredState = getStoredViewState();
-      const shouldRestoreTripDetail = Boolean(restoredState?.currentTripId && restoredState.view === 'trip-detail');
-      if (!shouldRestoreTripDetail) {
-        console.log('Dashboard bootstrap: forcing dashboard view after auth');
+      if (pendingTripId) {
         setHasForcedDashboard(true);
-        setCurrentTripId(null);
-        setView('dashboard');
-        setActiveTab('trip');
       } else {
-        setHasForcedDashboard(true);
+        const restoredState = getStoredViewState();
+        const shouldRestoreTripDetail = Boolean(restoredState?.currentTripId && restoredState.view === 'trip-detail');
+        if (!shouldRestoreTripDetail) {
+          console.log('Dashboard bootstrap: forcing dashboard view after auth');
+          setHasForcedDashboard(true);
+          setCurrentTripId(null);
+          setView('dashboard');
+          setActiveTab('trip');
+        } else {
+          setHasForcedDashboard(true);
+        }
       }
     }
 
     const loadTrips = async () => {
       console.log('Attempting to load trips for user:', user.id);
       try {
+        const targetTripId = getTripIdFromUrl() || (typeof window !== 'undefined' ? sessionStorage.getItem('pending_trip_link') : null);
+        if (typeof window !== 'undefined' && sessionStorage.getItem('pending_trip_link')) {
+          sessionStorage.removeItem('pending_trip_link');
+        }
+
         const { data, error } = await supabase
           .from('trips')
           .select('*')
@@ -767,36 +907,103 @@ function App() {
 
         console.log('Trips data received:', data);
 
-        if (Array.isArray(data) && data.length > 0) {
-          console.log('Dashboard load: found trips', data.length);
-          const mappedTrips: Trip[] = data.map(row => normalizeTripCategories({
-            id: row.id,
-            name: row.name,
-            people: row.people || [],
-            categories: row.categories || [],
-            startDate: row.start_date || '',
-            days: row.days || [],
-            caltopoUrl: row.caltopo_url || '',
-            debriefDiscussions: row.debrief_discussions || [],
-            debriefStravaEmbeds: row.debrief_strava_embeds || [],
-            userId: row.user_id,
-            sharedWith: row.shared_with || [],
-            lastModified: Number(row.last_modified || Date.now())
-          }));
+        let mappedTrips: Trip[] = Array.isArray(data)
+          ? data.map(row => normalizeTripCategories({
+              id: row.id,
+              name: row.name,
+              people: row.people || [],
+              categories: row.categories || [],
+              startDate: row.start_date || '',
+              days: row.days || [],
+              caltopoUrl: row.caltopo_url || '',
+              photosUrl: row.photos_url || '',
+              weatherStatus: row.weather_status,
+              weatherData: row.weather_data || {},
+              lastWeatherUpdate: row.last_weather_update ? Number(row.last_weather_update) : undefined,
+              debriefDiscussions: row.debrief_discussions || [],
+              debriefStravaEmbeds: row.debrief_strava_embeds || [],
+              userId: row.user_id,
+              sharedWith: row.shared_with || [],
+              lastModified: Number(row.last_modified || Date.now())
+            }))
+          : [];
+
+        if (targetTripId) {
+          let foundTarget = mappedTrips.find(t => t.id === targetTripId);
+
+          // If not in the bulk list, attempt direct fetch for this trip
+          if (!foundTarget) {
+            const { data: directData } = await supabase
+              .from('trips')
+              .select('*')
+              .eq('id', targetTripId)
+              .maybeSingle();
+
+            if (directData) {
+              const candidate = normalizeTripCategories({
+                id: directData.id,
+                name: directData.name,
+                people: directData.people || [],
+                categories: directData.categories || [],
+                startDate: directData.start_date || '',
+                days: directData.days || [],
+                caltopoUrl: directData.caltopo_url || '',
+                photosUrl: directData.photos_url || '',
+                weatherStatus: directData.weather_status,
+                weatherData: directData.weather_data || {},
+                lastWeatherUpdate: directData.last_weather_update ? Number(directData.last_weather_update) : undefined,
+                debriefDiscussions: directData.debrief_discussions || [],
+                debriefStravaEmbeds: directData.debrief_strava_embeds || [],
+                userId: directData.user_id,
+                sharedWith: directData.shared_with || [],
+                lastModified: Number(directData.last_modified || Date.now())
+              });
+
+              const isOwner = candidate.userId === user.id;
+              const isShared = Boolean(
+                user.email &&
+                candidate.sharedWith?.some(e => e.trim().toLowerCase() === user.email?.trim().toLowerCase())
+              );
+
+              if (isOwner || isShared) {
+                foundTarget = candidate;
+                mappedTrips = [candidate, ...mappedTrips.filter(t => t.id !== candidate.id)];
+              }
+            }
+          }
+
           setTrips(mappedTrips);
-          
+
+          if (foundTarget) {
+            const isOwner = foundTarget.userId === user.id;
+            const isShared = Boolean(
+              user.email &&
+              foundTarget.sharedWith?.some(e => e.trim().toLowerCase() === user.email?.trim().toLowerCase())
+            );
+
+            if (isOwner || isShared) {
+              setCurrentTripId(foundTarget.id);
+              setView('trip-detail');
+              setAccessDeniedTrip(null);
+            } else {
+              setAccessDeniedTrip({ id: targetTripId });
+              setCurrentTripId(null);
+            }
+          } else {
+            // User does not have access or trip doesn't exist
+            setAccessDeniedTrip({ id: targetTripId });
+            setCurrentTripId(null);
+          }
+        } else {
+          setTrips(mappedTrips);
+          setAccessDeniedTrip(null);
+
           const tripStillExists = currentTripId ? mappedTrips.some(trip => trip.id === currentTripId) : false;
           if (!tripStillExists) {
             setCurrentTripId(null);
             setView('dashboard');
             setActiveTab('trip');
           }
-        } else {
-          console.log('Dashboard load: no trips found; staying on dashboard.');
-          setTrips([]);
-          setCurrentTripId(null);
-          setView('dashboard');
-          setActiveTab('trip');
         }
       } catch (err: any) {
         console.error('Failed to load trips from Supabase:', err);
@@ -807,43 +1014,6 @@ function App() {
     };
 
     loadTrips();
-  }, [user]);
-
-  // Handle Join Trip from URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const joinTripId = params.get('join');
-
-    if (joinTripId && !isUuid(joinTripId)) {
-      console.warn('Ignoring legacy non-UUID invite link:', joinTripId);
-      clearJoinParam();
-      return;
-    }
-    
-    if (joinTripId && user?.email) {
-      const handleJoin = async () => {
-        try {
-          // Use the SECURITY DEFINER RPC so RLS doesn't block non-owners
-          // from adding themselves to shared_with.
-          const { error: rpcError } = await supabase.rpc('join_trip', {
-            trip_id: joinTripId,
-          });
-
-          if (rpcError) {
-            console.error('Error joining trip via RPC:', rpcError);
-            return;
-          }
-
-          // Reload without the ?join= param so the app fetches the
-          // newly shared trip from Supabase.
-          clearJoinParam();
-          window.location.reload();
-        } catch (err) {
-          console.error('Error joining trip:', err);
-        }
-      };
-      handleJoin();
-    }
   }, [user]);
 
   // Save trips to Supabase (debounced)
@@ -2227,22 +2397,25 @@ function App() {
   // Global nav — shown on dashboard and gear-closet views
   const GlobalNav = () => (
     <nav className="global-app-nav">
-      <div className="nav-brand" onClick={() => setView('dashboard')}>
+      <div className="nav-brand" onClick={navigateToDashboard}>
         <span className="brand-logo">🏔️</span>
         <span className="brand-name">Adventure Planner</span>
       </div>
       <div className="nav-links">
         <button
           type="button"
-          className={`nav-link-btn ${view === 'dashboard' ? 'active' : ''}`}
-          onClick={() => setView('dashboard')}
+          className={`nav-link-btn ${view === 'dashboard' && !accessDeniedTrip ? 'active' : ''}`}
+          onClick={navigateToDashboard}
         >
           🗺️ Trips
         </button>
         <button
           type="button"
           className={`nav-link-btn ${view === 'gear-closet' ? 'active' : ''}`}
-          onClick={() => setView('gear-closet')}
+          onClick={() => {
+            setAccessDeniedTrip(null);
+            setView('gear-closet');
+          }}
         >
           📦 Gear Closet
         </button>
@@ -2268,6 +2441,11 @@ function App() {
           onDeleteItem={deleteGearClosetItem}
           onAddSampleItems={addSampleGearItems}
         />
+        {toastMessage && (
+          <div className="app-toast" role="status" aria-live="polite">
+            {toastMessage}
+          </div>
+        )}
       </>
     );
   }
@@ -2278,11 +2456,16 @@ function App() {
         <GlobalNav />
         <TripDashboard
           trips={trips}
-          onViewTrip={(id) => { setCurrentTripId(id); setView('trip-detail'); }}
+          onViewTrip={(id) => {
+            setAccessDeniedTrip(null);
+            setCurrentTripId(id);
+            setView('trip-detail');
+          }}
           onNewTrip={() => createNewTrip('New Trip')}
           onRefreshAllWeather={refreshAllWeather}
           forecastData={forecastData}
           onOpenWeatherDetail={openWeatherDetail}
+          onCopyTripLink={handleCopyTripLink}
         />
         {selectedWeatherDetail.isOpen && selectedWeatherDetail.row && (
           <div className="weather-detail-modal-backdrop" onClick={closeWeatherDetail}>
@@ -2296,14 +2479,95 @@ function App() {
             </div>
           </div>
         )}
+        {toastMessage && (
+          <div className="app-toast" role="status" aria-live="polite">
+            {toastMessage}
+          </div>
+        )}
       </>
+    );
+  }
+
+  if (accessDeniedTrip) {
+    return (
+      <div className="access-denied-page">
+        <GlobalNav />
+        <div className="access-denied-container">
+          <div className="access-denied-card">
+            <div className="access-denied-icon">🔒</div>
+            <h2>Access Denied</h2>
+            <p className="access-denied-lead">
+              You do not have permission to view this trip.
+            </p>
+            <p className="access-denied-subtext">
+              Only the trip creator and users added to the trip's shared list can access this link.
+            </p>
+            <div className="access-denied-details">
+              <div className="detail-row">
+                <span className="detail-label">Signed in as:</span>
+                <span className="detail-value">{user.email || 'Unknown'}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Trip ID:</span>
+                <code className="detail-code">{accessDeniedTrip.id}</code>
+              </div>
+            </div>
+            <div className="access-denied-notice">
+              To view this trip, ask the creator to open their trip settings and add <strong>{user.email}</strong> to the shared list.
+            </div>
+            <div className="access-denied-actions">
+              <button
+                type="button"
+                className="access-denied-primary-btn"
+                onClick={navigateToDashboard}
+              >
+                ← Go to My Trips
+              </button>
+              <button
+                type="button"
+                className="access-denied-secondary-btn"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  setUser(null);
+                  setAccessDeniedTrip(null);
+                }}
+              >
+                Sign In With Different Account
+              </button>
+            </div>
+          </div>
+        </div>
+        {toastMessage && (
+          <div className="app-toast" role="status" aria-live="polite">
+            {toastMessage}
+          </div>
+        )}
+      </div>
     );
   }
 
   if (!currentTrip) {
     return (
-      <div className="loading-screen">
-        <p>No trip found. Creating a new one...</p>
+      <div className="access-denied-page">
+        <GlobalNav />
+        <div className="access-denied-container">
+          <div className="access-denied-card">
+            <div className="access-denied-icon">🧭</div>
+            <h2>Trip Not Found</h2>
+            <p className="access-denied-lead">
+              The requested trip could not be found or has been removed.
+            </p>
+            <div className="access-denied-actions">
+              <button
+                type="button"
+                className="access-denied-primary-btn"
+                onClick={navigateToDashboard}
+              >
+                ← Return to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -2337,7 +2601,7 @@ function App() {
       <GlobalNav />
       <header className="trip-header">
         <div className="trip-info">
-          <button onClick={() => setView('dashboard')} className="back-to-list-btn">← Back to List</button>
+          <button onClick={navigateToDashboard} className="back-to-list-btn">← Back to List</button>
           <div className="trip-title-block">
             <div className="trip-title-wrapper">
               <h1 
@@ -2371,6 +2635,14 @@ function App() {
               if (name) createNewTrip(name);
             }}>Create New Trip</button>
             <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
+            <button
+              type="button"
+              onClick={() => handleCopyTripLink()}
+              className="copy-trip-link-btn"
+              title="Copy direct link to this trip"
+            >
+              {copiedTripLink ? '✓ Copied Link' : '🔗 Copy Trip Link'}
+            </button>
             <button onClick={copyTrip}>Copy Trip</button>
 
             {user.id === currentTrip.userId ? (
@@ -3619,6 +3891,12 @@ function App() {
           />
         );
       })()}
+
+      {toastMessage && (
+        <div className="app-toast" role="status" aria-live="polite">
+          {toastMessage}
+        </div>
+      )}
 
     </div>
   );
