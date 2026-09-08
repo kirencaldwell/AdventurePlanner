@@ -669,8 +669,26 @@ function App() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [gearCloset, setGearCloset] = useState<GearClosetItem[]>([]);
-  const [currentTripId, setCurrentTripId] = useState<string | null>(() => getStoredViewState()?.currentTripId ?? null);
-  const [view, setView] = useState<'dashboard' | 'trip-detail' | 'gear-closet'>(() => getStoredViewState()?.view ?? 'dashboard');
+
+  const [initialTargetTripId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const fromUrl = getTripIdFromUrl();
+    const fromSession = window.sessionStorage.getItem('pending_trip_link');
+    if (fromSession) {
+      try { window.sessionStorage.removeItem('pending_trip_link'); } catch {}
+    }
+    return fromUrl || fromSession;
+  });
+  const initialTargetTripIdRef = useRef<string | null>(initialTargetTripId);
+
+  const [currentTripId, setCurrentTripId] = useState<string | null>(() => {
+    if (initialTargetTripId) return initialTargetTripId;
+    return getStoredViewState()?.currentTripId ?? null;
+  });
+  const [view, setView] = useState<'dashboard' | 'trip-detail' | 'gear-closet'>(() => {
+    if (initialTargetTripId) return 'trip-detail';
+    return getStoredViewState()?.view ?? 'dashboard';
+  });
   const [activeTab, setActiveTab] = useState<string>(() => getStoredViewState()?.activeTab ?? 'trip');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [historyInitialized, setHistoryInitialized] = useState(false);
@@ -678,7 +696,7 @@ function App() {
   const [isListening, setIsListening] = useState<boolean>(false);
   const [lastTranscript, setLastTranscript] = useState<string>('');
   const recognitionRef = useRef<any>(null);
-  const [hasForcedDashboard, setHasForcedDashboard] = useState(false);
+  const [hasForcedDashboard, setHasForcedDashboard] = useState<boolean>(() => Boolean(initialTargetTripId));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
 
@@ -737,7 +755,8 @@ function App() {
       window.sessionStorage.setItem(STORAGE_KEYS.currentTripId, currentTripId || '');
       window.sessionStorage.setItem(STORAGE_KEYS.activeTab, activeTab);
 
-      if (!historyInitialized) return;
+      // Do NOT modify history/URL while initial load is in progress
+      if (!historyInitialized || isInitialLoad) return;
 
       const url = new URL(window.location.href);
       if (view === 'trip-detail' && currentTripId) {
@@ -808,9 +827,9 @@ function App() {
       }
     };
 
-    const initialTripId = getTripIdFromUrl() || currentTripId;
+    const initialTripId = initialTargetTripIdRef.current || getTripIdFromUrl() || currentTripId;
     const initialUrl = new URL(window.location.href);
-    if (view === 'trip-detail' && initialTripId) {
+    if (initialTripId) {
       initialUrl.searchParams.set('trip', initialTripId);
       initialUrl.searchParams.delete('tripId');
       initialUrl.searchParams.delete('join');
@@ -818,7 +837,11 @@ function App() {
     if (initialUrl.pathname.startsWith('/trip/')) {
       initialUrl.pathname = '/';
     }
-    const initialState = { view, currentTripId: initialTripId, activeTab };
+    const initialState = {
+      view: initialTripId ? 'trip-detail' : view,
+      currentTripId: initialTripId,
+      activeTab
+    };
     window.history.replaceState(initialState, document.title, `${initialUrl.pathname}${initialUrl.search}${initialUrl.hash}`);
     window.addEventListener('popstate', handlePopState);
     setHistoryInitialized(true);
@@ -859,14 +882,14 @@ function App() {
   useEffect(() => {
     if (!user) {
       setTrips([]);
-      setCurrentTripId(null);
+      if (!initialTargetTripIdRef.current) {
+        setCurrentTripId(null);
+      }
       setAccessDeniedTrip(null);
       return;
     }
 
-    const pendingTripId = typeof window !== 'undefined'
-      ? (getTripIdFromUrl() || sessionStorage.getItem('pending_trip_link'))
-      : null;
+    const pendingTripId = initialTargetTripIdRef.current || getTripIdFromUrl() || (typeof window !== 'undefined' ? sessionStorage.getItem('pending_trip_link') : null);
 
     if (!hasForcedDashboard) {
       if (pendingTripId) {
@@ -889,9 +912,10 @@ function App() {
     const loadTrips = async () => {
       console.log('Attempting to load trips for user:', user.id);
       try {
-        const targetTripId = getTripIdFromUrl() || (typeof window !== 'undefined' ? sessionStorage.getItem('pending_trip_link') : null);
+        const targetTripId = initialTargetTripIdRef.current || getTripIdFromUrl() || (typeof window !== 'undefined' ? sessionStorage.getItem('pending_trip_link') : null);
+        console.log('loadTrips targetTripId:', targetTripId);
         if (typeof window !== 'undefined' && sessionStorage.getItem('pending_trip_link')) {
-          sessionStorage.removeItem('pending_trip_link');
+          try { sessionStorage.removeItem('pending_trip_link'); } catch {}
         }
 
         const { data, error } = await supabase
@@ -929,10 +953,12 @@ function App() {
           : [];
 
         if (targetTripId) {
-          let foundTarget = mappedTrips.find(t => t.id === targetTripId);
+          const normalizedTargetId = targetTripId.trim().toLowerCase();
+          let foundTarget = mappedTrips.find(t => t.id.toLowerCase() === normalizedTargetId);
 
           // If not in the bulk list, attempt direct fetch for this trip
           if (!foundTarget) {
+            console.log('Target trip not in bulk list, querying single trip:', targetTripId);
             const { data: directData } = await supabase
               .from('trips')
               .select('*')
@@ -962,12 +988,13 @@ function App() {
               const isOwner = candidate.userId === user.id;
               const isShared = Boolean(
                 user.email &&
-                candidate.sharedWith?.some(e => e.trim().toLowerCase() === user.email?.trim().toLowerCase())
+                Array.isArray(candidate.sharedWith) &&
+                candidate.sharedWith.some(e => e.trim().toLowerCase() === user.email?.trim().toLowerCase())
               );
 
               if (isOwner || isShared) {
                 foundTarget = candidate;
-                mappedTrips = [candidate, ...mappedTrips.filter(t => t.id !== candidate.id)];
+                mappedTrips = [candidate, ...mappedTrips.filter(t => t.id.toLowerCase() !== candidate.id.toLowerCase())];
               }
             }
           }
@@ -978,22 +1005,26 @@ function App() {
             const isOwner = foundTarget.userId === user.id;
             const isShared = Boolean(
               user.email &&
-              foundTarget.sharedWith?.some(e => e.trim().toLowerCase() === user.email?.trim().toLowerCase())
+              Array.isArray(foundTarget.sharedWith) &&
+              foundTarget.sharedWith.some(e => e.trim().toLowerCase() === user.email?.trim().toLowerCase())
             );
 
             if (isOwner || isShared) {
+              console.log('Access GRANTED to trip:', foundTarget.id);
               setCurrentTripId(foundTarget.id);
               setView('trip-detail');
               setAccessDeniedTrip(null);
             } else {
+              console.log('Access DENIED to trip:', targetTripId);
               setAccessDeniedTrip({ id: targetTripId });
               setCurrentTripId(null);
             }
           } else {
-            // User does not have access or trip doesn't exist
+            console.log('Target trip not found or unauthorized:', targetTripId);
             setAccessDeniedTrip({ id: targetTripId });
             setCurrentTripId(null);
           }
+          initialTargetTripIdRef.current = null;
         } else {
           setTrips(mappedTrips);
           setAccessDeniedTrip(null);
