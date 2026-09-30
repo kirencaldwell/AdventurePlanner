@@ -668,6 +668,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const tripSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [gearCloset, setGearCloset] = useState<GearClosetItem[]>([]);
 
   const [initialTargetTripId] = useState<string | null>(() => {
@@ -1051,7 +1052,7 @@ function App() {
   useEffect(() => {
     if (!user || isInitialLoad || trips.length === 0) return;
 
-    const timeoutId = setTimeout(async () => {
+    const timeoutId = setTimeout(() => {
       const upsertData = trips.map(t => ({
         id: t.id,
         name: t.name,
@@ -1068,12 +1069,16 @@ function App() {
       }));
 
       console.log('Upserting trips to Supabase:', upsertData);
-      const { error } = await supabase.from('trips').upsert(upsertData);
-      if (error) {
+      tripSaveQueueRef.current = tripSaveQueueRef.current.then(async () => {
+        const { error } = await supabase.from('trips').upsert(upsertData);
+        if (error) {
+          console.error('Failed to save trips to Supabase:', error);
+        } else {
+          console.log('Trips saved successfully');
+        }
+      }).catch(error => {
         console.error('Failed to save trips to Supabase:', error);
-      } else {
-        console.log('Trips saved successfully');
-      }
+      });
     }, 1000);
 
     return () => clearTimeout(timeoutId);
