@@ -2506,7 +2506,25 @@ function App() {
       return { ...trip, weatherStatus: status, weatherData, lastWeatherUpdate: Date.now() };
     }));
 
-    setTrips(updatedTrips);
+    const refreshedTripsById = new Map(updatedTrips.map(trip => [trip.id, trip]));
+    setTrips(currentTrips => currentTrips.map(currentTrip => {
+      const refreshedTrip = refreshedTripsById.get(currentTrip.id);
+      if (!refreshedTrip) return currentTrip;
+
+      const currentDays = currentTrip.days || [];
+      const refreshedDays = refreshedTrip.days || [];
+      const weatherInputsUnchanged = currentTrip.startDate === refreshedTrip.startDate
+        && currentDays.length === refreshedDays.length
+        && currentDays.every((day, index) => day.location === refreshedDays[index].location);
+      if (!weatherInputsUnchanged) return currentTrip;
+
+      return {
+        ...currentTrip,
+        weatherStatus: refreshedTrip.weatherStatus,
+        weatherData: refreshedTrip.weatherData,
+        lastWeatherUpdate: refreshedTrip.lastWeatherUpdate,
+      };
+    }));
 
     // Also fetch 7-day dashboard forecasts for all trips
     const newForecasts: Record<string, StartingDayForecast[]> = {};
