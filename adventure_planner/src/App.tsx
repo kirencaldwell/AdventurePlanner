@@ -168,6 +168,46 @@ const formatTripRange = (min: number, max: number, unit: string) => {
   return min === max ? `${formattedMin} ${unit}` : `${formattedMin}-${formattedMax} ${unit}`;
 };
 
+const AUTO_DIFFICULTY_LEVELS = [
+  { tag: 'family friendly', maxMiles: 4, maxElevation: 1500 },
+  { tag: 'chill', maxMiles: 7, maxElevation: 3000 },
+  { tag: 'standard', maxMiles: 10, maxElevation: 4000 },
+  { tag: 'demanding', maxMiles: 15, maxElevation: 6000 },
+  { tag: 'extremely challenging', maxMiles: Number.POSITIVE_INFINITY, maxElevation: Number.POSITIVE_INFINITY },
+];
+
+const getAutomaticDifficultyTag = (days: TripDay[]) => {
+  const plannedDayStats = days.map(day => (day.activities || []).reduce(
+    (stats, activity) => ({
+      miles: stats.miles + parseTripNumber(activity.miles),
+      elevationGain: stats.elevationGain + parseTripNumber(activity.elevationGain),
+    }),
+    { miles: 0, elevationGain: 0 }
+  )).filter(stats => stats.miles > 0 || stats.elevationGain > 0);
+
+  if (plannedDayStats.length === 0) return null;
+
+  const hardestLevelIndex = plannedDayStats.reduce((hardestIndex, stats) => {
+    const levelIndex = AUTO_DIFFICULTY_LEVELS.findIndex(level =>
+      stats.miles < level.maxMiles && stats.elevationGain < level.maxElevation
+    );
+    return Math.max(hardestIndex, levelIndex < 0 ? AUTO_DIFFICULTY_LEVELS.length - 1 : levelIndex);
+  }, 0);
+
+  return AUTO_DIFFICULTY_LEVELS[hardestLevelIndex].tag;
+};
+
+const updateAutomaticDifficultyTag = (trip: Trip, days: TripDay[]): Trip => {
+  const difficultyTags = new Set(AUTO_DIFFICULTY_LEVELS.map(level => level.tag));
+  const otherTags = (trip.tags || []).filter(tag => !difficultyTags.has(tag.trim().toLowerCase()));
+  const difficultyTag = getAutomaticDifficultyTag(days);
+  return {
+    ...trip,
+    days,
+    tags: difficultyTag ? [...otherTags, difficultyTag] : otherTags,
+  };
+};
+
 
 const calculateTripStats = (trip: Trip) => {
   const tripDays = trip.days || [];
@@ -565,11 +605,14 @@ const TripDashboard = ({
     minDays: '',
     maxDays: '',
     tags: '',
+    difficultyTags: [] as string[],
     strava: '',
     debriefComment: '',
   });
 
-  const hasActiveFilters = Object.values(filters).some(value => value.trim() !== '');
+  const hasActiveFilters = Object.values(filters).some(value =>
+    Array.isArray(value) ? value.length > 0 : value.trim() !== ''
+  );
   const filteredTrips = trips.filter(trip => {
     const stats = calculateTripStats(trip);
     const matchesRange = (rangeMin: number, rangeMax: number, minimum: string, maximum: string) => {
@@ -579,6 +622,8 @@ const TripDashboard = ({
     };
     const normalizedTagQuery = filters.tags.trim().toLowerCase();
     const matchesTags = !normalizedTagQuery || (trip.tags || []).some(tag => tag.toLowerCase().includes(normalizedTagQuery));
+    const matchesDifficultyTags = filters.difficultyTags.length === 0
+      || filters.difficultyTags.some(selectedTag => (trip.tags || []).some(tag => tag.toLowerCase() === selectedTag));
     const hasStravaPost = (trip.debriefStravaEmbeds || []).some(embed => embed.trim() !== '');
     const hasDebriefComment = (trip.debriefDiscussions || []).some(discussion => parseDiscussionString(discussion).text.trim() !== '');
     const matchesPresence = (filter: string, isPresent: boolean) => filter === '' || (filter === 'yes' ? isPresent : !isPresent);
@@ -587,12 +632,22 @@ const TripDashboard = ({
       && matchesRange(stats.elevationMin, stats.elevationMax, filters.minElevation, filters.maxElevation)
       && matchesRange(stats.dayCount, stats.dayCount, filters.minDays, filters.maxDays)
       && matchesTags
+      && matchesDifficultyTags
       && matchesPresence(filters.strava, hasStravaPost)
       && matchesPresence(filters.debriefComment, hasDebriefComment);
   });
 
   const updateFilter = (name: keyof typeof filters, value: string) => {
     setFilters(current => ({ ...current, [name]: value }));
+  };
+
+  const toggleDifficultyTag = (tag: string) => {
+    setFilters(current => ({
+      ...current,
+      difficultyTags: current.difficultyTags.includes(tag)
+        ? current.difficultyTags.filter(selectedTag => selectedTag !== tag)
+        : [...current.difficultyTags, tag],
+    }));
   };
 
   return (
@@ -609,7 +664,7 @@ const TripDashboard = ({
         <h2 id="trip-filter-heading">Filter trips</h2>
         <div className="trip-filter-actions">
           <span role="status">{filteredTrips.length} of {trips.length} trips</span>
-          <button type="button" onClick={() => setFilters({ minMiles: '', maxMiles: '', minElevation: '', maxElevation: '', minDays: '', maxDays: '', tags: '', strava: '', debriefComment: '' })} disabled={!hasActiveFilters}>
+          <button type="button" onClick={() => setFilters({ minMiles: '', maxMiles: '', minElevation: '', maxElevation: '', minDays: '', maxDays: '', tags: '', difficultyTags: [], strava: '', debriefComment: '' })} disabled={!hasActiveFilters}>
             Clear filters
           </button>
         </div>
@@ -634,6 +689,19 @@ const TripDashboard = ({
           Search tags
           <input type="search" placeholder="Search tags" value={filters.tags} onChange={event => updateFilter('tags', event.target.value)} />
         </label>
+        <fieldset className="trip-filter-tags">
+          <legend>Difficulty tags</legend>
+          {AUTO_DIFFICULTY_LEVELS.map(({ tag }) => (
+            <label key={tag}>
+              <input
+                type="checkbox"
+                checked={filters.difficultyTags.includes(tag)}
+                onChange={() => toggleDifficultyTag(tag)}
+              />
+              {tag}
+            </label>
+          ))}
+        </fieldset>
         <label className="trip-filter-select">
           Strava post
           <select value={filters.strava} onChange={event => updateFilter('strava', event.target.value)}>
@@ -1742,11 +1810,15 @@ function App() {
     if (editingDayId === dayId) {
       setEditingDayId(null);
     }
-    updateCurrentTrip(trip => ({
-      ...trip,
-      days: (trip.days || []).filter(day => day.id !== dayId),
-      lastModified: Date.now(),
-    }));
+    updateCurrentTrip(trip => {
+      const removedDay = (trip.days || []).find(day => day.id === dayId);
+      const days = (trip.days || []).filter(day => day.id !== dayId);
+      const removedMetrics = (removedDay?.activities || []).some(activity =>
+        parseTripNumber(activity.miles) !== 0 || parseTripNumber(activity.elevationGain) !== 0
+      );
+      const updatedTrip = { ...trip, days, lastModified: Date.now() };
+      return removedMetrics ? updateAutomaticDifficultyTag(updatedTrip, days) : updatedTrip;
+    });
   };
 
   const addTripDayActivity = (dayId: string) => {
@@ -1780,22 +1852,25 @@ function App() {
     activityId: string,
     updates: Partial<Omit<TripActivity, 'id'>>
   ) => {
-    updateCurrentTrip(trip => ({
-      ...trip,
-      days: (trip.days || []).map(day =>
+    updateCurrentTrip(trip => {
+      let mileageOrElevationChanged = false;
+      const days = (trip.days || []).map(day =>
         day.id === dayId
           ? {
               ...day,
-              activities: (day.activities || []).map(activity =>
-                activity.id === activityId
-                  ? { ...activity, ...updates }
-                  : activity
-              ),
+              activities: (day.activities || []).map(activity => {
+                if (activity.id !== activityId) return activity;
+                const updatedActivity = { ...activity, ...updates };
+                mileageOrElevationChanged = parseTripNumber(activity.miles) !== parseTripNumber(updatedActivity.miles)
+                  || parseTripNumber(activity.elevationGain) !== parseTripNumber(updatedActivity.elevationGain);
+                return updatedActivity;
+              }),
             }
           : day
-      ),
-      lastModified: Date.now(),
-    }));
+      );
+      const updatedTrip = { ...trip, days, lastModified: Date.now() };
+      return mileageOrElevationChanged ? updateAutomaticDifficultyTag(updatedTrip, days) : updatedTrip;
+    });
   };
 
   const speak = (text: string) => {
@@ -1918,18 +1993,20 @@ function App() {
   };
 
   const deleteTripDayActivity = (dayId: string, activityId: string) => {
-    updateCurrentTrip(trip => ({
-      ...trip,
-      days: (trip.days || []).map(day =>
+    updateCurrentTrip(trip => {
+      const removedActivity = (trip.days || [])
+        .find(day => day.id === dayId)?.activities?.find(activity => activity.id === activityId);
+      const days = (trip.days || []).map(day =>
         day.id === dayId
-          ? {
-              ...day,
-              activities: (day.activities || []).filter(activity => activity.id !== activityId),
-            }
+          ? { ...day, activities: (day.activities || []).filter(activity => activity.id !== activityId) }
           : day
-      ),
-      lastModified: Date.now(),
-    }));
+      );
+      const removedMetrics = Boolean(removedActivity && (
+        parseTripNumber(removedActivity.miles) !== 0 || parseTripNumber(removedActivity.elevationGain) !== 0
+      ));
+      const updatedTrip = { ...trip, days, lastModified: Date.now() };
+      return removedMetrics ? updateAutomaticDifficultyTag(updatedTrip, days) : updatedTrip;
+    });
   };
 
   const reorderTripDays = (sourceId: string, targetId: string) => {
