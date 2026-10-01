@@ -169,27 +169,34 @@ const formatTripRange = (min: number, max: number, unit: string) => {
 };
 
 const AUTO_DIFFICULTY_LEVELS = [
-  { tag: 'family friendly', maxMiles: 4, maxElevation: 1500 },
-  { tag: 'chill', maxMiles: 7, maxElevation: 3000 },
-  { tag: 'standard', maxMiles: 10, maxElevation: 4000 },
-  { tag: 'demanding', maxMiles: 15, maxElevation: 6000 },
-  { tag: 'extremely challenging', maxMiles: Number.POSITIVE_INFINITY, maxElevation: Number.POSITIVE_INFINITY },
+  { tag: 'family friendly', maxHikingMiles: 4, maxBikingMiles: 5, maxElevation: 1500 },
+  { tag: 'chill', maxHikingMiles: 7, maxBikingMiles: 10, maxElevation: 3000 },
+  { tag: 'standard', maxHikingMiles: 10, maxBikingMiles: 35, maxElevation: 4000 },
+  { tag: 'demanding', maxHikingMiles: 15, maxBikingMiles: 70, maxElevation: 6000 },
+  { tag: 'extremely challenging', maxHikingMiles: Number.POSITIVE_INFINITY, maxBikingMiles: Number.POSITIVE_INFINITY, maxElevation: Number.POSITIVE_INFINITY },
 ];
 
 const getAutomaticDifficultyTag = (days: TripDay[]) => {
-  const plannedDayStats = days.map(day => (day.activities || []).reduce(
-    (stats, activity) => ({
-      miles: stats.miles + parseTripNumber(activity.miles),
-      elevationGain: stats.elevationGain + parseTripNumber(activity.elevationGain),
-    }),
-    { miles: 0, elevationGain: 0 }
-  )).filter(stats => stats.miles > 0 || stats.elevationGain > 0);
+  const plannedDayStats = days.flatMap(day => {
+    const activityStats = new Map<string, { miles: number; elevationGain: number }>();
+    (day.activities || []).forEach(activity => {
+      const activityType = activity.type.trim().toLowerCase() === 'biking' ? 'biking' : 'hiking';
+      const stats = activityStats.get(activityType) || { miles: 0, elevationGain: 0 };
+      stats.miles += parseTripNumber(activity.miles);
+      stats.elevationGain += parseTripNumber(activity.elevationGain);
+      activityStats.set(activityType, stats);
+    });
+    return Array.from(activityStats, ([activityType, stats]) => ({ activityType, ...stats }));
+  }).filter(stats => stats.miles > 0 || stats.elevationGain > 0);
 
   if (plannedDayStats.length === 0) return null;
 
   const hardestLevelIndex = plannedDayStats.reduce((hardestIndex, stats) => {
     const levelIndex = AUTO_DIFFICULTY_LEVELS.findIndex(level =>
-      stats.miles < level.maxMiles && stats.elevationGain < level.maxElevation
+      (stats.activityType === 'biking'
+        ? stats.miles <= level.maxBikingMiles
+        : stats.miles < level.maxHikingMiles)
+      && stats.elevationGain < level.maxElevation
     );
     return Math.max(hardestIndex, levelIndex < 0 ? AUTO_DIFFICULTY_LEVELS.length - 1 : levelIndex);
   }, 0);
@@ -1893,7 +1900,7 @@ function App() {
     updates: Partial<Omit<TripActivity, 'id'>>
   ) => {
     updateCurrentTrip(trip => {
-      let mileageOrElevationChanged = false;
+      let difficultyInputsChanged = false;
       const days = (trip.days || []).map(day =>
         day.id === dayId
           ? {
@@ -1901,15 +1908,17 @@ function App() {
               activities: (day.activities || []).map(activity => {
                 if (activity.id !== activityId) return activity;
                 const updatedActivity = { ...activity, ...updates };
-                mileageOrElevationChanged = parseTripNumber(activity.miles) !== parseTripNumber(updatedActivity.miles)
-                  || parseTripNumber(activity.elevationGain) !== parseTripNumber(updatedActivity.elevationGain);
+                const hasMetrics = parseTripNumber(activity.miles) !== 0 || parseTripNumber(activity.elevationGain) !== 0;
+                difficultyInputsChanged = parseTripNumber(activity.miles) !== parseTripNumber(updatedActivity.miles)
+                  || parseTripNumber(activity.elevationGain) !== parseTripNumber(updatedActivity.elevationGain)
+                  || (hasMetrics && activity.type.trim().toLowerCase() !== updatedActivity.type.trim().toLowerCase());
                 return updatedActivity;
               }),
             }
           : day
       );
       const updatedTrip = { ...trip, days, lastModified: Date.now() };
-      return mileageOrElevationChanged ? updateAutomaticDifficultyTag(updatedTrip, days) : updatedTrip;
+      return difficultyInputsChanged ? updateAutomaticDifficultyTag(updatedTrip, days) : updatedTrip;
     });
   };
 
@@ -3569,8 +3578,9 @@ function App() {
                                       }}
                                     >
                                       <option value="hiking">Hiking</option>
+                                      <option value="biking">Biking</option>
                                       <option value="ski-touring">Ski Touring</option>
-                                      {activity.type !== 'hiking' && activity.type !== 'ski-touring' && activity.type !== 'custom' && (
+                                      {activity.type !== 'hiking' && activity.type !== 'biking' && activity.type !== 'ski-touring' && activity.type !== 'custom' && (
                                         <option value={activity.type}>{activity.type}</option>
                                       )}
                                       <option value="custom">Custom</option>
