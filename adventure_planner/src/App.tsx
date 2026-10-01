@@ -580,8 +580,38 @@ const WeatherDayCard = ({
   </div>
 );
 
+interface TripDashboardFilters {
+  minMiles: string;
+  maxMiles: string;
+  minElevation: string;
+  maxElevation: string;
+  minDays: string;
+  maxDays: string;
+  tags: string;
+  difficultyTags: string[];
+  activityType: string;
+  strava: string;
+  debriefComment: string;
+}
+
+const createDefaultTripDashboardFilters = (): TripDashboardFilters => ({
+  minMiles: '',
+  maxMiles: '',
+  minElevation: '',
+  maxElevation: '',
+  minDays: '',
+  maxDays: '',
+  tags: '',
+  difficultyTags: [],
+  activityType: '',
+  strava: '',
+  debriefComment: '',
+});
+
 const TripDashboard = ({
   trips,
+  filters,
+  onFiltersChange,
   onViewTrip,
   onNewTrip,
   onRefreshAllWeather,
@@ -590,6 +620,8 @@ const TripDashboard = ({
   onCopyTripLink,
 }: {
   trips: Trip[];
+  filters: TripDashboardFilters;
+  onFiltersChange: (updater: (current: TripDashboardFilters) => TripDashboardFilters) => void;
   onViewTrip: (id: string) => void;
   onNewTrip: () => void;
   onRefreshAllWeather: () => void;
@@ -597,22 +629,15 @@ const TripDashboard = ({
   onOpenWeatherDetail: (trip: Trip, forecastDate: string) => void;
   onCopyTripLink: (tripId: string) => void;
 }) => {
-  const [filters, setFilters] = useState({
-    minMiles: '',
-    maxMiles: '',
-    minElevation: '',
-    maxElevation: '',
-    minDays: '',
-    maxDays: '',
-    tags: '',
-    difficultyTags: [] as string[],
-    strava: '',
-    debriefComment: '',
-  });
-
   const hasActiveFilters = Object.values(filters).some(value =>
     Array.isArray(value) ? value.length > 0 : value.trim() !== ''
   );
+  const activityTypes = Array.from(new Set([
+    'hiking',
+    'ski-touring',
+    filters.activityType,
+    ...trips.flatMap(trip => (trip.days || []).flatMap(day => (day.activities || []).map(activity => activity.type.trim()))),
+  ].filter(Boolean))).sort((first, second) => first.localeCompare(second));
   const filteredTrips = trips.filter(trip => {
     const stats = calculateTripStats(trip);
     const matchesRange = (rangeMin: number, rangeMax: number, minimum: string, maximum: string) => {
@@ -624,6 +649,8 @@ const TripDashboard = ({
     const matchesTags = !normalizedTagQuery || (trip.tags || []).some(tag => tag.toLowerCase().includes(normalizedTagQuery));
     const matchesDifficultyTags = filters.difficultyTags.length === 0
       || filters.difficultyTags.some(selectedTag => (trip.tags || []).some(tag => tag.toLowerCase() === selectedTag));
+    const matchesActivityType = !filters.activityType
+      || (trip.days || []).some(day => (day.activities || []).some(activity => activity.type.toLowerCase() === filters.activityType.toLowerCase()));
     const hasStravaPost = (trip.debriefStravaEmbeds || []).some(embed => embed.trim() !== '');
     const hasDebriefComment = (trip.debriefDiscussions || []).some(discussion => parseDiscussionString(discussion).text.trim() !== '');
     const matchesPresence = (filter: string, isPresent: boolean) => filter === '' || (filter === 'yes' ? isPresent : !isPresent);
@@ -633,16 +660,17 @@ const TripDashboard = ({
       && matchesRange(stats.dayCount, stats.dayCount, filters.minDays, filters.maxDays)
       && matchesTags
       && matchesDifficultyTags
+      && matchesActivityType
       && matchesPresence(filters.strava, hasStravaPost)
       && matchesPresence(filters.debriefComment, hasDebriefComment);
   });
 
   const updateFilter = (name: keyof typeof filters, value: string) => {
-    setFilters(current => ({ ...current, [name]: value }));
+    onFiltersChange(current => ({ ...current, [name]: value }));
   };
 
   const toggleDifficultyTag = (tag: string) => {
-    setFilters(current => ({
+    onFiltersChange(current => ({
       ...current,
       difficultyTags: current.difficultyTags.includes(tag)
         ? current.difficultyTags.filter(selectedTag => selectedTag !== tag)
@@ -664,7 +692,7 @@ const TripDashboard = ({
         <h2 id="trip-filter-heading">Filter trips</h2>
         <div className="trip-filter-actions">
           <span role="status">{filteredTrips.length} of {trips.length} trips</span>
-          <button type="button" onClick={() => setFilters({ minMiles: '', maxMiles: '', minElevation: '', maxElevation: '', minDays: '', maxDays: '', tags: '', difficultyTags: [], strava: '', debriefComment: '' })} disabled={!hasActiveFilters}>
+          <button type="button" onClick={() => onFiltersChange(() => createDefaultTripDashboardFilters())} disabled={!hasActiveFilters}>
             Clear filters
           </button>
         </div>
@@ -702,6 +730,17 @@ const TripDashboard = ({
             </label>
           ))}
         </fieldset>
+        <label className="trip-filter-select">
+          Activity type
+          <select value={filters.activityType} onChange={event => updateFilter('activityType', event.target.value)}>
+            <option value="">Any activity</option>
+            {activityTypes.map(activityType => (
+              <option key={activityType} value={activityType}>
+                {activityType.split(/[-_\s]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="trip-filter-select">
           Strava post
           <select value={filters.strava} onChange={event => updateFilter('strava', event.target.value)}>
@@ -837,6 +876,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [dashboardFilters, setDashboardFilters] = useState(createDefaultTripDashboardFilters);
   const tripSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [gearCloset, setGearCloset] = useState<GearClosetItem[]>([]);
 
@@ -2711,6 +2751,8 @@ function App() {
         <GlobalNav />
         <TripDashboard
           trips={trips}
+          filters={dashboardFilters}
+          onFiltersChange={setDashboardFilters}
           onViewTrip={(id) => {
             setAccessDeniedTrip(null);
             setCurrentTripId(id);
