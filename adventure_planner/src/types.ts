@@ -82,6 +82,7 @@ export interface Trip {
   people: Person[];
   categories: Category[];
   tags?: string[];
+  isTemplate?: boolean;
   startDate?: string;
   days?: TripDay[];
   caltopoUrl?: string;
