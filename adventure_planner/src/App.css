@@ -2011,6 +2011,17 @@ select:focus {
   justify-content: center;
 }
 
+.trip-filter-select {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+  min-width: 0;
+  color: #6b7280;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .trip-filter-empty {
   padding: 2rem 1rem;
   border: 1px dashed #cbd5e1;

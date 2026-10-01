@@ -565,6 +565,8 @@ const TripDashboard = ({
     minDays: '',
     maxDays: '',
     tags: '',
+    strava: '',
+    debriefComment: '',
   });
 
   const hasActiveFilters = Object.values(filters).some(value => value.trim() !== '');
@@ -577,11 +579,16 @@ const TripDashboard = ({
     };
     const normalizedTagQuery = filters.tags.trim().toLowerCase();
     const matchesTags = !normalizedTagQuery || (trip.tags || []).some(tag => tag.toLowerCase().includes(normalizedTagQuery));
+    const hasStravaPost = (trip.debriefStravaEmbeds || []).some(embed => embed.trim() !== '');
+    const hasDebriefComment = (trip.debriefDiscussions || []).some(discussion => parseDiscussionString(discussion).text.trim() !== '');
+    const matchesPresence = (filter: string, isPresent: boolean) => filter === '' || (filter === 'yes' ? isPresent : !isPresent);
 
     return matchesRange(stats.mileageMin, stats.mileageMax, filters.minMiles, filters.maxMiles)
       && matchesRange(stats.elevationMin, stats.elevationMax, filters.minElevation, filters.maxElevation)
       && matchesRange(stats.dayCount, stats.dayCount, filters.minDays, filters.maxDays)
-      && matchesTags;
+      && matchesTags
+      && matchesPresence(filters.strava, hasStravaPost)
+      && matchesPresence(filters.debriefComment, hasDebriefComment);
   });
 
   const updateFilter = (name: keyof typeof filters, value: string) => {
@@ -602,7 +609,7 @@ const TripDashboard = ({
         <h2 id="trip-filter-heading">Filter trips</h2>
         <div className="trip-filter-actions">
           <span role="status">{filteredTrips.length} of {trips.length} trips</span>
-          <button type="button" onClick={() => setFilters({ minMiles: '', maxMiles: '', minElevation: '', maxElevation: '', minDays: '', maxDays: '', tags: '' })} disabled={!hasActiveFilters}>
+          <button type="button" onClick={() => setFilters({ minMiles: '', maxMiles: '', minElevation: '', maxElevation: '', minDays: '', maxDays: '', tags: '', strava: '', debriefComment: '' })} disabled={!hasActiveFilters}>
             Clear filters
           </button>
         </div>
@@ -626,6 +633,22 @@ const TripDashboard = ({
         <label className="trip-filter-search">
           Search tags
           <input type="search" placeholder="Search tags" value={filters.tags} onChange={event => updateFilter('tags', event.target.value)} />
+        </label>
+        <label className="trip-filter-select">
+          Strava post
+          <select value={filters.strava} onChange={event => updateFilter('strava', event.target.value)}>
+            <option value="">Any</option>
+            <option value="yes">Has post</option>
+            <option value="no">No post</option>
+          </select>
+        </label>
+        <label className="trip-filter-select">
+          Debrief comment
+          <select value={filters.debriefComment} onChange={event => updateFilter('debriefComment', event.target.value)}>
+            <option value="">Any</option>
+            <option value="yes">Has comment</option>
+            <option value="no">No comment</option>
+          </select>
         </label>
       </div>
     </section>
