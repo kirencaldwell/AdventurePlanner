@@ -2011,6 +2011,41 @@ select:focus {
   justify-content: center;
 }
 
+.trip-filter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  grid-column: span 2;
+  min-width: 0;
+  margin: 0;
+  padding: 0.65rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.trip-filter-tags legend {
+  padding: 0 0.25rem;
+  color: #4b5563;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.trip-filter-tags label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #4b5563;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trip-filter-tags input {
+  margin: 0;
+  accent-color: #285c3d;
+}
+
 .trip-filter-select {
   display: flex;
   flex-direction: column;
@@ -2357,6 +2392,10 @@ select:focus {
 
   .trip-filter-grid {
     grid-template-columns: 1fr;
+  }
+
+  .trip-filter-tags {
+    grid-column: auto;
   }
 
   .forecast-grid {
