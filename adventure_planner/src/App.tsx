@@ -124,11 +124,14 @@ const STORAGE_KEYS = {
   activeTab: 'adventure-planner-active-tab',
 };
 
-const getStoredViewState = (): { view: 'dashboard' | 'trip-detail' | 'gear-closet'; currentTripId: string | null; activeTab: string } | null => {
+type AppView = 'dashboard' | 'trip-detail' | 'gear-closet' | 'templates';
+
+const getStoredViewState = (): { view: AppView; currentTripId: string | null; activeTab: string } | null => {
   if (typeof window === 'undefined') return null;
   try {
     const urlTripId = getTripIdFromUrl();
     const savedView = window.sessionStorage.getItem(STORAGE_KEYS.view);
+    const urlView = new URLSearchParams(window.location.search).get('view');
     const savedTripId = window.sessionStorage.getItem(STORAGE_KEYS.currentTripId);
     const savedActiveTab = window.sessionStorage.getItem(STORAGE_KEYS.activeTab);
 
@@ -141,7 +144,11 @@ const getStoredViewState = (): { view: 'dashboard' | 'trip-detail' | 'gear-close
     }
 
     return {
-      view: savedView === 'trip-detail' ? 'trip-detail' : savedView === 'gear-closet' ? 'gear-closet' : 'dashboard',
+      view: urlView === 'templates' || savedView === 'templates'
+        ? 'templates'
+        : urlView === 'gear-closet' || savedView === 'gear-closet'
+          ? 'gear-closet'
+          : savedView === 'trip-detail' ? 'trip-detail' : 'dashboard',
       currentTripId: savedTripId || null,
       activeTab: savedActiveTab || 'trip',
     };
@@ -879,6 +886,55 @@ const TripDashboard = ({
   );
 };
 
+const TemplatesView = ({
+  templates,
+  userId,
+  onUseTemplate,
+  onDeleteTemplate,
+}: {
+  templates: Trip[];
+  userId: string;
+  onUseTemplate: (template: Trip) => void;
+  onDeleteTemplate: (template: Trip) => void;
+}) => (
+  <main className="dashboard-container">
+    <header className="dashboard-header">
+      <h1>Templates</h1>
+    </header>
+    {templates.length === 0 ? (
+      <div className="trip-filter-empty">
+        <h2>No templates yet</h2>
+        <p>Open a trip and choose “Save as Template” to add a reusable starting point.</p>
+      </div>
+    ) : (
+      <div className="template-list">
+        {templates.map(template => {
+          const stats = calculateTripStats(template);
+          return (
+            <article className="template-card" key={template.id}>
+              <div className="template-card-content">
+                <h2>{template.name}</h2>
+                <p>{stats.dayCount} days <span aria-hidden="true">·</span> {stats.mileageRange} <span aria-hidden="true">·</span> {stats.elevationRange}</p>
+                {(template.tags || []).length > 0 && (
+                  <div className="trip-card-tags" aria-label="Template tags">
+                    {template.tags?.map(tag => <span className="trip-card-tag" key={tag}>{tag}</span>)}
+                  </div>
+                )}
+              </div>
+              <div className="template-card-actions">
+                <button type="button" className="new-trip-btn" onClick={() => onUseTemplate(template)}>Use Template</button>
+                {template.userId === userId && (
+                  <button type="button" className="danger" onClick={() => onDeleteTemplate(template)}>Delete</button>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    )}
+  </main>
+);
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -902,7 +958,7 @@ function App() {
     if (initialTargetTripId) return initialTargetTripId;
     return getStoredViewState()?.currentTripId ?? null;
   });
-  const [view, setView] = useState<'dashboard' | 'trip-detail' | 'gear-closet'>(() => {
+  const [view, setView] = useState<AppView>(() => {
     if (initialTargetTripId) return 'trip-detail';
     return getStoredViewState()?.view ?? 'dashboard';
   });
@@ -987,6 +1043,11 @@ function App() {
         url.searchParams.delete('trip');
         url.searchParams.delete('tripId');
         url.searchParams.delete('join');
+      } else if (view === 'templates') {
+        url.searchParams.set('view', 'templates');
+        url.searchParams.delete('trip');
+        url.searchParams.delete('tripId');
+        url.searchParams.delete('join');
       } else {
         url.searchParams.delete('trip');
         url.searchParams.delete('tripId');
@@ -1020,7 +1081,7 @@ function App() {
       setAccessDeniedTrip(null);
 
       if (event.state) {
-        const nextState = event.state as { view: 'dashboard' | 'trip-detail' | 'gear-closet'; currentTripId: string | null; activeTab: string };
+        const nextState = event.state as { view: AppView; currentTripId: string | null; activeTab: string };
         setView(nextState.view);
         setCurrentTripId(nextState.currentTripId);
         setActiveTab(nextState.activeTab || 'trip');
@@ -1035,8 +1096,8 @@ function App() {
       }
 
       const params = new URLSearchParams(window.location.search);
-      if (params.get('view') === 'gear-closet') {
-        setView('gear-closet');
+      if (params.get('view') === 'gear-closet' || params.get('view') === 'templates') {
+        setView(params.get('view') as AppView);
         setCurrentTripId(null);
       } else {
         setView('dashboard');
@@ -1114,8 +1175,12 @@ function App() {
         setHasForcedDashboard(true);
       } else {
         const restoredState = getStoredViewState();
-        const shouldRestoreTripDetail = Boolean(restoredState?.currentTripId && restoredState.view === 'trip-detail');
-        if (!shouldRestoreTripDetail) {
+        const shouldRestoreView = Boolean(restoredState && (
+          restoredState.view === 'templates'
+          || restoredState.view === 'gear-closet'
+          || (restoredState.view === 'trip-detail' && restoredState.currentTripId)
+        ));
+        if (!shouldRestoreView) {
           console.log('Dashboard bootstrap: forcing dashboard view after auth');
           setHasForcedDashboard(true);
           setCurrentTripId(null);
@@ -1156,6 +1221,7 @@ function App() {
               people: row.people || [],
               categories: row.categories || [],
               tags: row.tags || [],
+              isTemplate: row.is_template === true,
               startDate: row.start_date || '',
               days: row.days || [],
               caltopoUrl: row.caltopo_url || '',
@@ -1191,6 +1257,7 @@ function App() {
                 people: directData.people || [],
                 categories: directData.categories || [],
                 tags: directData.tags || [],
+                isTemplate: directData.is_template === true,
                 startDate: directData.start_date || '',
                 days: directData.days || [],
                 caltopoUrl: directData.caltopo_url || '',
@@ -1278,6 +1345,7 @@ function App() {
         people: t.people,
         categories: t.categories,
         tags: t.tags || [],
+        is_template: t.isTemplate || false,
         start_date: t.startDate || '',
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
@@ -1685,6 +1753,7 @@ function App() {
       caltopoUrl: '',
       debriefDiscussions: [],
       debriefStravaEmbeds: [],
+      isTemplate: false,
       userId: userId,
       sharedWith: [],
       lastModified: Date.now(),
@@ -2393,32 +2462,86 @@ function App() {
     alert(`Packing list copied successfully!`);
   };
 
-  const copyTrip = () => {
-    if (!currentTrip) return;
-    const newTrip: Trip = {
-      ...currentTrip,
+  const createTripCopy = (sourceTrip: Trip, name: string, isTemplate: boolean, resetTripDetails = true): Trip => {
+    const personIds = new Map(sourceTrip.people.map(person => [person.id, generateId()]));
+    const mapPersonId = (personId: string | undefined) => personId ? personIds.get(personId) || personId : undefined;
+    return normalizeTripCategories({
+      ...sourceTrip,
       id: generateId(),
-      name: `${currentTrip.name} (Copy)`,
-      categories: currentTrip.categories.map(cat => ({
-        ...cat,
+      name,
+      people: sourceTrip.people.map(person => ({ ...person, id: personIds.get(person.id)! })),
+      categories: sourceTrip.categories.map(category => ({
+        ...category,
         id: generateId(),
-        items: cat.items.map(item => ({
+        items: category.items.map(item => ({
           ...item,
           id: generateId(),
           personStatuses: {},
-          isGroupGear: item.isGroupGear,
-          broughtByPersonId: item.broughtByPersonId,
-          carriedByPersonId: item.carriedByPersonId,
-          forPersonIds: item.forPersonIds,
-          quantity: item.quantity,
-          personQuantities: item.personQuantities ? { ...item.personQuantities } : undefined,
-        }))
+          broughtByPersonId: mapPersonId(item.broughtByPersonId),
+          carriedByPersonId: mapPersonId(item.carriedByPersonId),
+          forPersonIds: item.forPersonIds?.map(personId => mapPersonId(personId)!),
+          personQuantities: item.personQuantities
+            ? Object.fromEntries(Object.entries(item.personQuantities).map(([personId, quantity]) => [mapPersonId(personId), quantity]))
+            : undefined,
+          personCarriedBy: item.personCarriedBy
+            ? Object.fromEntries(Object.entries(item.personCarriedBy).map(([personId, carrierId]) => [mapPersonId(personId), mapPersonId(carrierId)]))
+            : undefined,
+          personGearItems: item.personGearItems
+            ? Object.fromEntries(Object.entries(item.personGearItems).map(([personId, details]) => [mapPersonId(personId), details]))
+            : undefined,
+        })),
       })),
-      startDate: currentTrip.startDate || '',
-      days: currentTrip.days?.map(day => ({ ...day, id: generateId() })) || [],
-      caltopoUrl: currentTrip.caltopoUrl || '',
+      tags: [...(sourceTrip.tags || [])],
+      isTemplate,
+      startDate: resetTripDetails ? '' : sourceTrip.startDate || '',
+      days: (sourceTrip.days || []).map(day => ({
+        ...day,
+        id: generateId(),
+        activities: (day.activities || []).map(activity => ({ ...activity, id: generateId() })),
+      })),
+      debriefDiscussions: resetTripDetails ? [] : [...(sourceTrip.debriefDiscussions || [])],
+      debriefStravaEmbeds: resetTripDetails ? [] : [...(sourceTrip.debriefStravaEmbeds || [])],
+      weatherStatus: resetTripDetails ? undefined : sourceTrip.weatherStatus,
+      weatherData: resetTripDetails ? undefined : sourceTrip.weatherData,
+      lastWeatherUpdate: resetTripDetails ? undefined : sourceTrip.lastWeatherUpdate,
+      userId: user?.id,
+      sharedWith: resetTripDetails ? [] : [...(sourceTrip.sharedWith || [])],
       lastModified: Date.now(),
-    };
+    });
+  };
+
+  const saveCurrentTripAsTemplate = () => {
+    if (!currentTrip || !user || currentTrip.userId !== user.id) return;
+    const templateName = window.prompt('Template Name?', `${currentTrip.name} Template`)?.trim();
+    if (!templateName) return;
+    const template = createTripCopy(currentTrip, templateName, true);
+    setTrips(previousTrips => [...previousTrips, template]);
+    setToastMessage(`Saved “${templateName}” to Templates.`);
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  const useTemplate = (template: Trip) => {
+    const newTrip = createTripCopy(template, template.name, false);
+    setTrips(prev => [...prev, newTrip]);
+    setCurrentTripId(newTrip.id);
+    setView('trip-detail');
+    setActiveTab('trip');
+  };
+
+  const deleteTemplate = async (template: Trip) => {
+    if (!confirm(`Delete the template “${template.name}”?`)) return;
+    const { error } = await supabase.from('trips').delete().eq('id', template.id);
+    if (error) {
+      console.error('Failed to delete template:', error);
+      alert('Failed to delete template.');
+      return;
+    }
+    setTrips(previousTrips => previousTrips.filter(trip => trip.id !== template.id));
+  };
+
+  const copyTrip = () => {
+    if (!currentTrip) return;
+    const newTrip = createTripCopy(currentTrip, `${currentTrip.name} (Copy)`, false, false);
     setTrips(prev => [...prev, newTrip]);
     setCurrentTripId(newTrip.id);
     setView('trip-detail');
@@ -2573,6 +2696,7 @@ function App() {
   const refreshAllWeather = async (force = false) => {
     const today = getTodayString();
     const updatedTrips = await Promise.all(trips.map(async (trip) => {
+      if (trip.isTemplate) return trip;
       // Check if cache is valid (less than an hour old AND same data)
       const isCacheValid = trip.lastWeatherUpdate && 
                            (Date.now() - trip.lastWeatherUpdate < 3600000) &&
@@ -2655,6 +2779,7 @@ function App() {
     // Also fetch 7-day dashboard forecasts for all trips
     const newForecasts: Record<string, StartingDayForecast[]> = {};
     for (const trip of updatedTrips) {
+      if (trip.isTemplate) continue;
       if (trip.days && trip.days.length > 0) {
         try {
           newForecasts[trip.id] = await fetchTripDashboardForecast(trip, today);
@@ -2723,6 +2848,17 @@ function App() {
         >
           📦 Gear Closet
         </button>
+        <button
+          type="button"
+          className={`nav-link-btn ${view === 'templates' ? 'active' : ''}`}
+          onClick={() => {
+            setAccessDeniedTrip(null);
+            setCurrentTripId(null);
+            setView('templates');
+          }}
+        >
+          📋 Templates
+        </button>
       </div>
       <div className="nav-user-section">
         <span className="user-email-text" title={user.email || ''}>
@@ -2733,6 +2869,21 @@ function App() {
       </div>
     </nav>
   );
+
+  if (view === 'templates') {
+    return (
+      <>
+        <GlobalNav />
+        <TemplatesView
+          templates={trips.filter(trip => trip.isTemplate)}
+          userId={user.id}
+          onUseTemplate={useTemplate}
+          onDeleteTemplate={deleteTemplate}
+        />
+        {toastMessage && <div className="app-toast" role="status">{toastMessage}</div>}
+      </>
+    );
+  }
 
   if (view === 'gear-closet') {
     return (
@@ -2759,7 +2910,7 @@ function App() {
       <>
         <GlobalNav />
         <TripDashboard
-          trips={trips}
+          trips={trips.filter(trip => !trip.isTemplate)}
           filters={dashboardFilters}
           onFiltersChange={setDashboardFilters}
           onViewTrip={(id) => {
@@ -2950,6 +3101,9 @@ function App() {
               {copiedTripLink ? '✓ Copied Link' : '🔗 Copy Trip Link'}
             </button>
             <button onClick={copyTrip}>Copy Trip</button>
+            {user.id === currentTrip.userId && (
+              <button onClick={saveCurrentTripAsTemplate}>Save as Template</button>
+            )}
 
             {user.id === currentTrip.userId ? (
               <button onClick={deleteTrip} className="danger">Delete Trip</button>
@@ -2962,7 +3116,7 @@ function App() {
               value={currentTrip.id} 
               onChange={(e) => setCurrentTripId(e.target.value)}
             >
-              {trips.map(t => (
+              {trips.filter(t => !t.isTemplate).map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
