@@ -700,6 +700,7 @@ function App() {
   const [hasForcedDashboard, setHasForcedDashboard] = useState<boolean>(() => Boolean(initialTargetTripId));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
+  const [tripTagInput, setTripTagInput] = useState('');
 
   // Gear Closet picker modal state (for adding from closet to packing tab)
   const [closetPickerOpen, setClosetPickerOpen] = useState(false);
@@ -938,6 +939,7 @@ function App() {
               name: row.name,
               people: row.people || [],
               categories: row.categories || [],
+              tags: row.tags || [],
               startDate: row.start_date || '',
               days: row.days || [],
               caltopoUrl: row.caltopo_url || '',
@@ -972,6 +974,7 @@ function App() {
                 name: directData.name,
                 people: directData.people || [],
                 categories: directData.categories || [],
+                tags: directData.tags || [],
                 startDate: directData.start_date || '',
                 days: directData.days || [],
                 caltopoUrl: directData.caltopo_url || '',
@@ -1058,6 +1061,7 @@ function App() {
         name: t.name,
         people: t.people,
         categories: t.categories,
+        tags: t.tags || [],
         start_date: t.startDate || '',
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
@@ -1479,6 +1483,25 @@ function App() {
 
   const updateCurrentTrip = (updater: (trip: Trip) => Trip) => {
     setTrips(prev => prev.map(t => t.id === currentTripId ? updater(t) : t));
+  };
+
+  const addTripTag = () => {
+    const tag = tripTagInput.trim();
+    if (!tag) return;
+    updateCurrentTrip(trip => {
+      if ((trip.tags || []).some(existing => existing.toLowerCase() === tag.toLowerCase())) {
+        return trip;
+      }
+      return { ...trip, tags: [...(trip.tags || []), tag] };
+    });
+    setTripTagInput('');
+  };
+
+  const removeTripTag = (tagToRemove: string) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      tags: (trip.tags || []).filter(tag => tag !== tagToRemove),
+    }));
   };
 
   const addPerson = (name: string) => {
@@ -3042,6 +3065,41 @@ function App() {
                 </div>
               );
             })()}
+            <section className="trip-tags" aria-labelledby="trip-tags-heading">
+              <h3 id="trip-tags-heading" className="packing-status-heading">Tags</h3>
+              <div className="trip-tags-content">
+                <div className="trip-tags-list">
+                  {(currentTrip.tags || []).map(tag => (
+                    <span className="trip-tag" key={tag}>
+                      {tag}
+                      <button
+                        type="button"
+                        className="remove-trip-tag-btn"
+                        aria-label={`Remove ${tag} tag`}
+                        onClick={() => removeTripTag(tag)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <form
+                  className="trip-tags-form"
+                  onSubmit={event => {
+                    event.preventDefault();
+                    addTripTag();
+                  }}
+                >
+                  <input
+                    aria-label="New trip tag"
+                    placeholder="Add a tag"
+                    value={tripTagInput}
+                    onChange={event => setTripTagInput(event.target.value)}
+                  />
+                  <button type="submit" disabled={!tripTagInput.trim()}>Add</button>
+                </form>
+              </div>
+            </section>
             <div className="trip-days">
               <div className="trip-days-header">
                 <h2>Trip Days</h2>
