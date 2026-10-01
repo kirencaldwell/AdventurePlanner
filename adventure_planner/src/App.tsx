@@ -186,6 +186,10 @@ const calculateTripStats = (trip: Trip) => {
     
   return {
     dayCount: tripDays.length,
+    mileageMin: mandatoryMileage,
+    mileageMax: totalMileage,
+    elevationMin: mandatoryElevationGain,
+    elevationMax: totalElevationGain,
     mileageRange: formatTripRange(mandatoryMileage, totalMileage, 'mi'),
     elevationRange: formatTripRange(mandatoryElevationGain, totalElevationGain, 'ft'),
   };
@@ -552,7 +556,39 @@ const TripDashboard = ({
   forecastData: Record<string, StartingDayForecast[]>;
   onOpenWeatherDetail: (trip: Trip, forecastDate: string) => void;
   onCopyTripLink: (tripId: string) => void;
-}) => (
+}) => {
+  const [filters, setFilters] = useState({
+    minMiles: '',
+    maxMiles: '',
+    minElevation: '',
+    maxElevation: '',
+    minDays: '',
+    maxDays: '',
+    tags: '',
+  });
+
+  const hasActiveFilters = Object.values(filters).some(value => value.trim() !== '');
+  const filteredTrips = trips.filter(trip => {
+    const stats = calculateTripStats(trip);
+    const matchesRange = (rangeMin: number, rangeMax: number, minimum: string, maximum: string) => {
+      const selectedMin = minimum === '' ? Number.NEGATIVE_INFINITY : Number(minimum);
+      const selectedMax = maximum === '' ? Number.POSITIVE_INFINITY : Number(maximum);
+      return rangeMax >= selectedMin && rangeMin <= selectedMax;
+    };
+    const normalizedTagQuery = filters.tags.trim().toLowerCase();
+    const matchesTags = !normalizedTagQuery || (trip.tags || []).some(tag => tag.toLowerCase().includes(normalizedTagQuery));
+
+    return matchesRange(stats.mileageMin, stats.mileageMax, filters.minMiles, filters.maxMiles)
+      && matchesRange(stats.elevationMin, stats.elevationMax, filters.minElevation, filters.maxElevation)
+      && matchesRange(stats.dayCount, stats.dayCount, filters.minDays, filters.maxDays)
+      && matchesTags;
+  });
+
+  const updateFilter = (name: keyof typeof filters, value: string) => {
+    setFilters(current => ({ ...current, [name]: value }));
+  };
+
+  return (
   <div className="dashboard-container">
     <header className="dashboard-header">
       <h1>My Trips</h1>
@@ -561,8 +597,44 @@ const TripDashboard = ({
         <button onClick={onNewTrip} className="new-trip-btn">+ New Trip</button>
       </div>
     </header>
+    <section className="trip-filter-panel" aria-labelledby="trip-filter-heading">
+      <div className="trip-filter-header">
+        <h2 id="trip-filter-heading">Filter trips</h2>
+        <div className="trip-filter-actions">
+          <span role="status">{filteredTrips.length} of {trips.length} trips</span>
+          <button type="button" onClick={() => setFilters({ minMiles: '', maxMiles: '', minElevation: '', maxElevation: '', minDays: '', maxDays: '', tags: '' })} disabled={!hasActiveFilters}>
+            Clear filters
+          </button>
+        </div>
+      </div>
+      <div className="trip-filter-grid">
+        <fieldset className="trip-filter-range">
+          <legend>Miles</legend>
+          <label>Min<input type="number" min="0" step="0.1" value={filters.minMiles} onChange={event => updateFilter('minMiles', event.target.value)} /></label>
+          <label>Max<input type="number" min="0" step="0.1" value={filters.maxMiles} onChange={event => updateFilter('maxMiles', event.target.value)} /></label>
+        </fieldset>
+        <fieldset className="trip-filter-range">
+          <legend>Elevation gain (ft)</legend>
+          <label>Min<input type="number" min="0" step="100" value={filters.minElevation} onChange={event => updateFilter('minElevation', event.target.value)} /></label>
+          <label>Max<input type="number" min="0" step="100" value={filters.maxElevation} onChange={event => updateFilter('maxElevation', event.target.value)} /></label>
+        </fieldset>
+        <fieldset className="trip-filter-range">
+          <legend>Days</legend>
+          <label>Min<input type="number" min="0" step="1" value={filters.minDays} onChange={event => updateFilter('minDays', event.target.value)} /></label>
+          <label>Max<input type="number" min="0" step="1" value={filters.maxDays} onChange={event => updateFilter('maxDays', event.target.value)} /></label>
+        </fieldset>
+        <label className="trip-filter-search">
+          Search tags
+          <input type="search" placeholder="Search tags" value={filters.tags} onChange={event => updateFilter('tags', event.target.value)} />
+        </label>
+      </div>
+    </section>
     <div className="trip-list">
-      {trips.map((trip) => {
+      {filteredTrips.length === 0 ? (
+        <div className="trip-filter-empty" role="status">
+          {trips.length === 0 ? 'No trips yet.' : 'No trips match these filters.'}
+        </div>
+      ) : filteredTrips.map((trip) => {
         const stats = calculateTripStats(trip);
         const weatherStatus = trip.weatherStatus || 'Pending';
         let statusColor = '#9ca3af';
@@ -610,6 +682,11 @@ const TripDashboard = ({
                   <span>{stats.mileageRange}</span>
                   <span>{stats.elevationRange}</span>
                 </div>
+                {(trip.tags || []).length > 0 && (
+                  <div className="trip-card-tags" aria-label="Trip tags">
+                    {trip.tags?.map(tag => <span className="trip-card-tag" key={tag}>{tag}</span>)}
+                  </div>
+                )}
               </div>
               <div className="forecast-section" onClick={(e) => e.stopPropagation()}>
                 <div className="forecast-section-label">Weather window for the next 7 days</div>
@@ -662,7 +739,8 @@ const TripDashboard = ({
       })}
     </div>
   </div>
-);
+  );
+};
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
