@@ -75,7 +75,7 @@ export default defineConfig([
 
 ## Gemini Ask Setup
 
-Ask uses Gemini 2.5 Flash. Google AI Studio offers a free API tier, subject to Google's current model and account quotas. The app also enforces 5 requests per user per minute, 50 per user per day, and 15 per project per minute/100 per project per day. Provider quotas still apply.
+Ask uses Gemini 3.8 Flash through the Interactions API. Google AI Studio offers a free API tier, subject to Google's current model and account quotas. The app also enforces 5 requests per user per minute, 50 per user per day, and 15 per project per minute/100 per project per day. Provider quotas still apply.
 
 1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/apikey).
 2. In the Supabase project's SQL Editor, run [`adventure_planner/supabase/migrations/20261002_add_ask_rate_limit.sql`](adventure_planner/supabase/migrations/20261002_add_ask_rate_limit.sql).
