@@ -2153,7 +2153,8 @@ function App() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Sign in to ask about this trip.');
 
-      const askingPerson = currentTrip.people.find(person => person.userId === session.user.id)?.name || null;
+      const askingPersonRecord = currentTrip.people.find(person => person.userId === session.user.id);
+      const askingPerson = askingPersonRecord?.name || null;
       const peopleById = new Map(currentTrip.people.map(person => [person.id, person.name]));
       const gearById = new Map(gearCloset.map(gear => [gear.id, {
         name: gear.name,
@@ -2166,9 +2167,10 @@ function App() {
       const tripContext = {
         name: currentTrip.name,
         askingPerson,
+        askingPersonId: askingPersonRecord?.id || null,
         startDate: currentTrip.startDate,
         tags: currentTrip.tags,
-        people: currentTrip.people.map(({ name }) => name),
+        people: currentTrip.people.map(({ id, name }) => ({ id, name })),
         packingSummary: calcPersonPackingStats(currentTrip, undefined, gearCloset).map(stats => ({
           person: personName(stats.personId),
           packedItems: stats.packedCount,
@@ -2201,8 +2203,10 @@ function App() {
           )))
           .map(({ name, category, description, weight, weightUnit }) => ({ name, category, description, weight, weightUnit })),
         categories: currentTrip.categories.map(category => ({
+          id: category.id,
           name: category.name,
           items: category.items.map(item => ({
+            id: item.id,
             name: item.name,
             description: item.description,
             weight: item.weight,
@@ -2273,7 +2277,12 @@ function App() {
         body: JSON.stringify({ question: normalizedQuestion, tripContext }),
       });
       const contentType = response.headers.get('content-type') || '';
-      const result: { error?: string; answer?: string; missing?: string[] } | null = contentType.includes('application/json')
+      const result: {
+        error?: string;
+        answer?: string;
+        missing?: string[];
+        action?: { type?: string; itemId?: string; personId?: string; status?: string };
+      } | null = contentType.includes('application/json')
         ? await response.json()
         : null;
       if (!response.ok) {
@@ -2281,6 +2290,29 @@ function App() {
         throw new Error(`${result?.error || `Ask API returned ${response.status}. Check that /api/ask is deployed.`}${missing}`);
       }
       if (!result) throw new Error('Ask API returned a non-JSON response. Check the deployment configuration.');
+      if (result.action?.type === 'set_status') {
+        const action = result.action;
+        const itemMatch = currentTrip.categories.flatMap(category =>
+          category.items.map(item => ({ category, item }))
+        ).find(({ item }) => item.id === action.itemId);
+        const targetPerson = currentTrip.people.find(person => person.id === action.personId);
+        const validStatus = DEFAULT_STATUSES.find(status => status.id === action.status);
+        if (!itemMatch || !targetPerson || !validStatus) {
+          throw new Error('Gemini suggested an invalid item, person, or packing status. No changes were made.');
+        }
+
+        const refersToSelf = /\b(?:i|me|my|mine)\b/i.test(normalizedQuestion);
+        const linkedSpeaker = currentTrip.people.find(person => person.userId === session.user.id);
+        if (refersToSelf && (!linkedSpeaker || targetPerson.id !== linkedSpeaker.id)) {
+          throw new Error('Link your packing row first, or name the person whose status you want to change. No changes were made.');
+        }
+
+        updateStatus(itemMatch.category.id, itemMatch.item.id, targetPerson.id, validStatus.id);
+        const actionAnswer = `Marked ${itemMatch.item.name} as ${validStatus.label} for ${targetPerson.name}.`;
+        setAskAnswer(actionAnswer);
+        speak(actionAnswer);
+        return;
+      }
       const answer = String(result.answer || 'I could not find an answer in this trip.');
       setAskAnswer(answer);
       speak(answer);
