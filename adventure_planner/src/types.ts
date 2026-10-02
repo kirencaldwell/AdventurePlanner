@@ -9,6 +9,7 @@ export interface Status {
 export interface Person {
   id: string;
   name: string;
+  userId?: string;
 }
 
 export interface GearClosetItem {

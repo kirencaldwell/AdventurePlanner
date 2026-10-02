@@ -31,6 +31,26 @@ export const isUuid = (value: string | null | undefined): value is string => {
   return Boolean(value && UUID_PATTERN.test(value));
 };
 
+const parseVoicePackingUpdate = (input: string): { itemName: string; status: StatusId } | null => {
+  const statement = input.trim().replace(/[.!?]+$/, '');
+  const patterns: Array<{ expression: RegExp; status: StatusId }> = [
+    { expression: /^(?:i|i've|i have)\s+(?:fully\s+)?packed\s+(?:my\s+|the\s+)?(.+)$/i, status: 'fully-packed' },
+    { expression: /^(?:i|i've|i have)\s+(?:put|placed)\s+(?:my\s+|the\s+)?(.+?)\s+(?:in|into)\s+(?:the\s+)?car$/i, status: 'in-car' },
+    { expression: /^(?:i|i've|i have)\s+set\s+aside\s+(?:my\s+|the\s+)?(.+)$/i, status: 'set-aside' },
+    { expression: /^i\s+(?:have\s+not|haven't|did\s+not|didn't)\s+pack(?:ed)?\s+(?:my\s+|the\s+)?(.+)$/i, status: 'not-packed' },
+    { expression: /^i\s+need\s+to\s+buy\s+(?:my\s+|the\s+)?(.+)$/i, status: 'need-to-buy' },
+  ];
+
+  for (const { expression, status } of patterns) {
+    const match = statement.match(expression);
+    const itemName = match?.[1]?.trim();
+    if (itemName) return { itemName, status };
+  }
+  return null;
+};
+
+const normalizeVoiceItemName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
 export const getTripIdFromUrl = (): string | null => {
   if (typeof window === 'undefined') return null;
   const params = new URLSearchParams(window.location.search);
@@ -1773,6 +1793,22 @@ function App() {
     setTrips(prev => prev.map(t => t.id === currentTripId ? updater(t) : t));
   };
 
+  const setMyPackingPerson = (personId: string) => {
+    if (!user) return;
+    updateCurrentTrip(trip => {
+      const selectedPerson = trip.people.find(person => person.id === personId);
+      if (selectedPerson?.userId && selectedPerson.userId !== user.id) return trip;
+      return {
+        ...trip,
+        people: trip.people.map(person => ({
+          ...person,
+          userId: person.id === personId ? user.id : person.userId === user.id ? undefined : person.userId,
+        })),
+        lastModified: Date.now(),
+      };
+    });
+  };
+
   const addTripTag = () => {
     const tag = tripTagInput.trim();
     if (!tag) return;
@@ -2016,14 +2052,72 @@ function App() {
     setLastTranscript(normalizedQuestion);
     setAskQuestion(normalizedQuestion);
     setAskAnswer('');
+
+    const packingUpdate = parseVoicePackingUpdate(normalizedQuestion);
+    if (packingUpdate) {
+      const speaker = user
+        ? currentTrip.people.find(person => person.userId === user.id)
+        : undefined;
+      if (!speaker) {
+        const message = 'Choose your packing row in the Packers section before using first-person packing commands.';
+        setAskAnswer(message);
+        speak(message);
+        return;
+      }
+
+      const normalizedItemName = normalizeVoiceItemName(packingUpdate.itemName);
+      const allItems = currentTrip.categories.flatMap(category =>
+        category.items.map(item => ({ category, item }))
+      );
+      const exactMatches = allItems.filter(({ item }) =>
+        normalizeVoiceItemName(item.name) === normalizedItemName
+      );
+      const categoryMatches = allItems.filter(({ category, item }) =>
+        normalizedItemName.includes(normalizeVoiceItemName(item.name))
+        && normalizedItemName.includes(normalizeVoiceItemName(category.name))
+      );
+      const matches = exactMatches.length > 0
+        ? exactMatches
+        : categoryMatches.length > 0
+          ? categoryMatches
+          : allItems.filter(({ item }) => {
+              const normalizedName = normalizeVoiceItemName(item.name);
+              return normalizedName.includes(normalizedItemName) || normalizedItemName.includes(normalizedName);
+            });
+
+      if (matches.length === 0) {
+        const message = `I couldn't find ${packingUpdate.itemName} on this trip.`;
+        setAskAnswer(message);
+        speak(message);
+        return;
+      }
+      if (matches.length > 1) {
+        const choices = matches.map(({ category, item }) => `${item.name} in ${category.name}`).join(', ');
+        const message = `I found more than one match: ${choices}. Please say the category.`;
+        setAskAnswer(message);
+        speak(message);
+        return;
+      }
+
+      const [{ category, item }] = matches;
+      updateStatus(category.id, item.id, speaker.id, packingUpdate.status);
+      const statusLabel = DEFAULT_STATUSES.find(status => status.id === packingUpdate.status)?.label || packingUpdate.status;
+      const message = `Marked ${item.name} as ${statusLabel} for ${speaker.name}.`;
+      setAskAnswer(message);
+      speak(message);
+      return;
+    }
+
     setIsAsking(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Sign in to ask about this trip.');
 
+      const askingPerson = currentTrip.people.find(person => person.userId === session.user.id)?.name || null;
       const peopleById = new Map(currentTrip.people.map(person => [person.id, person.name]));
       const tripContext = {
         name: currentTrip.name,
+        askingPerson,
         startDate: currentTrip.startDate,
         tags: currentTrip.tags,
         people: currentTrip.people.map(({ name }) => name),
@@ -3160,6 +3254,25 @@ function App() {
 
         <div className="people-manager">
           <h3>Packers:</h3>
+          <label className="voice-identity">
+            <span>My packing row</span>
+            <select
+              aria-label="My packing row"
+              value={currentTrip.people.find(person => person.userId === user.id)?.id || ''}
+              onChange={event => setMyPackingPerson(event.target.value)}
+            >
+              <option value="">Not linked</option>
+              {currentTrip.people.map(person => (
+                <option
+                  key={person.id}
+                  value={person.id}
+                  disabled={Boolean(person.userId && person.userId !== user.id)}
+                >
+                  {person.name}{person.userId && person.userId !== user.id ? ' (linked)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="people-list">
             {currentTrip.people.map(p => (
               <span key={p.id} className="person-tag">

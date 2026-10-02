@@ -267,6 +267,19 @@ button.danger {
   opacity: 0.8;
 }
 
+.voice-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.voice-identity select {
+  max-width: min(240px, 60vw);
+  padding: 0.35rem 0.5rem;
+}
+
 .people-list {
   display: flex;
   gap: 10px;
