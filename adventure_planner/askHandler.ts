@@ -74,7 +74,9 @@ export async function handleAsk(request: AskRequest, response: AskResponse) {
       return;
     }
     userId = user.id;
-  } catch {
+  } catch (error) {
+    const details = error instanceof Error ? `${error.name}: ${error.message}` : 'Unknown error';
+    console.error('Supabase auth verification failed:', details);
     response.status(503).json({ error: 'Could not verify your sign-in. Try again shortly.' });
     return;
   }
