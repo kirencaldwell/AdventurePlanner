@@ -72,3 +72,18 @@ export default defineConfig([
   },
 ])
 ```
+
+## Gemini Ask Setup
+
+Ask uses Gemini 2.5 Flash. Google AI Studio offers a free API tier, subject to Google's current model and account quotas. The app also enforces 5 requests per user per minute, 50 per user per day, and 15 per project per minute/100 per project per day. Provider quotas still apply.
+
+1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/apikey).
+2. In the Supabase project's SQL Editor, run [`adventure_planner/supabase/migrations/20261002_add_ask_rate_limit.sql`](adventure_planner/supabase/migrations/20261002_add_ask_rate_limit.sql).
+3. Add these server-side environment variables to the Vercel project and redeploy:
+  - `GEMINI_API_KEY`: the Google AI Studio key.
+  - `SUPABASE_URL`: the Supabase project URL.
+  - `SUPABASE_ANON_KEY`: the Supabase anon/publishable key, used only to verify signed-in users.
+  - `SUPABASE_SERVICE_ROLE_KEY`: the Supabase service-role/secret key, used only for the quota RPC.
+4. Keep `GEMINI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` out of all `VITE_` variables and client code. The Vercel project root should be the repository root so `/api/ask` is deployed as a function.
+
+For local use, export the same four variables in the shell that runs the server, apply the migration, then run `npm --prefix adventure_planner run build` followed by `npm --prefix adventure_planner start`. For Vite development, start the built server first and then run `npm --prefix adventure_planner run dev`; the `/api` requests are proxied to port 8099.
