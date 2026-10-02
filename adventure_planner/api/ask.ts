@@ -1,3 +1,3 @@
-import { handleAsk } from '../askHandler';
+import { handleAsk } from '../askHandler.js';
 
 export default handleAsk;
