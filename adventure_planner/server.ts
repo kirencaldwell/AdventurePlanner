@@ -4,6 +4,7 @@ import bodyParser from 'body-parser';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { handleAsk } from './askHandler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +14,7 @@ const PORT = 8099;
 const DATA_FILE = path.join(__dirname, 'trips.json');
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '64kb' }));
 
 // GLOBAL LOGGER for debugging Ingress paths
 app.use((req, res, next) => {
@@ -47,6 +48,8 @@ app.post('/api/trips', async (req, res) => {
     res.status(500).json({ error: 'Failed to save data' });
   }
 });
+
+app.post('/api/ask', handleAsk);
 
 // 2. STATIC FILES SECOND
 const distPath = path.join(__dirname, '..', 'dist');

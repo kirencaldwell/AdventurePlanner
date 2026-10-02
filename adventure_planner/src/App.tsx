@@ -968,6 +968,9 @@ function App() {
   const isHandlingPopState = useRef(false);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [lastTranscript, setLastTranscript] = useState<string>('');
+  const [askQuestion, setAskQuestion] = useState('');
+  const [askAnswer, setAskAnswer] = useState('');
+  const [isAsking, setIsAsking] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [hasForcedDashboard, setHasForcedDashboard] = useState<boolean>(() => Boolean(initialTargetTripId));
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -2002,106 +2005,71 @@ function App() {
     }
   };
 
-  const findItemByName = (name: string) => {
-    if (!currentTrip) return null;
-    const needle = name.trim().toLowerCase();
-    if (!needle) return null;
-    for (const cat of currentTrip.categories) {
-      for (const item of cat.items) {
-        if (item.name.toLowerCase().includes(needle)) return { item, category: cat };
-      }
-    }
-    return null;
-  };
-
-  const parseVoiceIntent = (transcript: string): { intent: 'is_on_list' | 'is_packed' | 'status' | 'who_has' | 'unknown'; item: string | null } => {
-    const t = transcript.trim().toLowerCase();
-    // who has X
-    let m = t.match(/who (?:has|got|is holding|has got) (?:the )?(.*)/);
-    if (m) return { intent: 'who_has', item: m[1].trim() };
-
-    // what is the status of X / what's the status of X
-    m = t.match(/what(?:'s| is) the status of (?:the )?(.*)/);
-    if (m) return { intent: 'status', item: m[1].trim() };
-
-    // is X on the list / is X on my list
-    if (t.includes(' on the list') || t.includes(' on my list') || t.includes(' on list')) {
-      const parts = t.split(' on ');
-      return { intent: 'is_on_list', item: parts[0].replace(/^(is |does |do |does )/, '').trim() };
-    }
-
-    // is X packed / is X in the car / is X packed for
-    m = t.match(/is (?:the )?(.*) (?:packed|in the car|in-car|fully packed|fully-packed)/);
-    if (m) return { intent: 'is_packed', item: m[1].trim() };
-
-    // fallback: try simple 'is X' questions
-    m = t.match(/is (?:the )?(.*)/);
-    if (m) return { intent: 'status', item: m[1].trim() };
-
-    return { intent: 'unknown', item: null };
-  };
-
-  const handleVoiceQuery = (transcript: string) => {
-    if (!transcript) return;
-    setLastTranscript(transcript);
+  const askTripQuestion = async (question: string) => {
+    const normalizedQuestion = question.trim();
+    if (!normalizedQuestion || isAsking) return;
     if (!currentTrip) {
-      speak('No trip is selected. Please open a trip first.');
-      return;
-    }
-    const { intent, item } = parseVoiceIntent(transcript);
-    if (!item) {
-      speak("Sorry, I didn't understand. Try asking 'Is X on the list' or 'Who has X'.");
+      setAskAnswer('Open a trip before asking a question.');
       return;
     }
 
-    const found = findItemByName(item);
-    if (!found) {
-      speak(`I couldn't find ${item} on this trip.`);
-      return;
-    }
+    setLastTranscript(normalizedQuestion);
+    setAskQuestion(normalizedQuestion);
+    setAskAnswer('');
+    setIsAsking(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Sign in to ask about this trip.');
 
-    const statuses = Object.entries(found.item.personStatuses || {});
-    const packedStates = new Set(['fully-packed', 'in-car', 'in-car']);
-
-    if (intent === 'is_on_list') {
-      speak(`${found.item.name} is on this trip.`);
-      return;
-    }
-
-    if (intent === 'is_packed') {
-      const packedBy = statuses.filter(([_, s]) => packedStates.has(s)).map(([personId]) => {
-        const p = currentTrip.people.find(pp => pp.id === personId);
-        return p ? p.name : 'Someone';
+      const peopleById = new Map(currentTrip.people.map(person => [person.id, person.name]));
+      const tripContext = {
+        name: currentTrip.name,
+        startDate: currentTrip.startDate,
+        tags: currentTrip.tags,
+        people: currentTrip.people.map(({ name }) => name),
+        categories: currentTrip.categories.map(category => ({
+          name: category.name,
+          items: category.items.map(item => ({
+            name: item.name,
+            description: item.description,
+            quantity: item.quantity,
+            statuses: Object.fromEntries(Object.entries(item.personStatuses || {}).map(([personId, status]) => [
+              peopleById.get(personId) || 'Unknown person', status,
+            ])),
+          })),
+        })),
+        days: (currentTrip.days || []).map(day => ({
+          location: day.location,
+          description: day.description,
+          notes: day.notes,
+          activities: (day.activities || []).map(activity => ({
+            type: activity.type,
+            description: activity.description,
+            importance: activity.importance,
+            miles: activity.miles,
+            elevationGain: activity.elevationGain,
+          })),
+        })),
+      };
+      const response = await fetch('/api/ask', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ question: normalizedQuestion, tripContext }),
       });
-      if (packedBy.length > 0) {
-        speak(`${found.item.name} is packed by ${packedBy.join(', ')}.`);
-      } else {
-        speak(`${found.item.name} is not packed yet.`);
-      }
-      return;
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not answer that question.');
+      const answer = String(result.answer || 'I could not find an answer in this trip.');
+      setAskAnswer(answer);
+      speak(answer);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not answer that question.';
+      setAskAnswer(message);
+    } finally {
+      setIsAsking(false);
     }
-
-    if (intent === 'who_has') {
-      const holders = statuses.filter(([_, s]) => packedStates.has(s)).map(([personId]) => {
-        const p = currentTrip.people.find(pp => pp.id === personId);
-        return p ? p.name : 'Someone';
-      });
-      if (holders.length > 0) speak(`${holders.join(', ')} have ${found.item.name}.`);
-      else speak(`No one has ${found.item.name} packed right now.`);
-      return;
-    }
-
-    // status or fallback
-    if (statuses.length === 0) {
-      speak(`${found.item.name} is on the list but has no packer-specific status.`);
-      return;
-    }
-    const parts = statuses.map(([personId, status]) => {
-      const person = currentTrip.people.find(p => p.id === personId);
-      const name = person ? person.name : 'Someone';
-      return `${name} is ${status.replace(/-/g, ' ')}`;
-    });
-    speak(`${found.item.name}: ${parts.join('; ')}.`);
   };
 
   const promptForCustomActivityType = (currentValue: string) => {
@@ -3121,7 +3089,23 @@ function App() {
               ))}
             </select>
             <div className="voice-controls">
+              <form className="ask-form" onSubmit={event => {
+                event.preventDefault();
+                void askTripQuestion(askQuestion);
+              }}>
+                <input
+                  value={askQuestion}
+                  onChange={event => setAskQuestion(event.target.value)}
+                  placeholder="Ask about this trip"
+                  aria-label="Question about this trip"
+                  maxLength={500}
+                />
+                <button type="submit" className="voice-btn" disabled={isAsking || !askQuestion.trim()}>
+                  {isAsking ? 'Thinking...' : 'Ask'}
+                </button>
+              </form>
               <button
+                type="button"
                 className={`voice-btn ${isListening ? 'listening' : ''}`}
                 onClick={() => {
                   if (isListening) {
@@ -3144,7 +3128,8 @@ function App() {
                       rec.onresult = (ev: any) => {
                         const transcript = Array.from(ev.results).map((r: any) => r[0].transcript).join(' ');
                         setLastTranscript(transcript);
-                        handleVoiceQuery(transcript);
+                        setAskQuestion(transcript);
+                        void askTripQuestion(transcript);
                       };
                       rec.onend = () => setIsListening(false);
                       rec.onerror = (e: any) => { console.error('Speech error', e); setIsListening(false); };
@@ -3154,11 +3139,14 @@ function App() {
                     }
                   }
                 }}
-                title="Ask about trip items by voice"
+                title="Ask a question about this trip by voice"
               >
-                {isListening ? 'Stop Voice' : 'Ask (voice)'}
+                {isListening ? 'Stop voice' : 'Voice'}
               </button>
-              <div className="voice-transcript">{lastTranscript}</div>
+              <div className="ask-response" aria-live="polite">
+                {lastTranscript && <div className="voice-transcript">You asked: {lastTranscript}</div>}
+                {askAnswer && <div className="voice-answer">{askAnswer}</div>}
+              </div>
             </div>
           </div>
         </div>
