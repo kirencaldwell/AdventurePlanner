@@ -1,3 +1,3 @@
-import { handleAsk } from '../adventure_planner/askHandler.js';
+import { handleAsk } from '../adventure_planner/askHandler';
 
 export default handleAsk;
