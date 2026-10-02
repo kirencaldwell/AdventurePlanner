@@ -1,9 +1,9 @@
-interface AskRequest {
+export interface AskRequest {
   headers: { authorization?: string };
   body: unknown;
 }
 
-interface AskResponse {
+export interface AskResponse {
   status(code: number): AskResponse;
   json(body: unknown): void;
 }
