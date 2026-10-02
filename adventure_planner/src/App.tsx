@@ -2059,8 +2059,14 @@ function App() {
         },
         body: JSON.stringify({ question: normalizedQuestion, tripContext }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not answer that question.');
+      const contentType = response.headers.get('content-type') || '';
+      const result: { error?: string; answer?: string } | null = contentType.includes('application/json')
+        ? await response.json()
+        : null;
+      if (!response.ok) {
+        throw new Error(result?.error || `Ask API returned ${response.status}. Check that /api/ask is deployed.`);
+      }
+      if (!result) throw new Error('Ask API returned a non-JSON response. Check the deployment configuration.');
       const answer = String(result.answer || 'I could not find an answer in this trip.');
       setAskAnswer(answer);
       speak(answer);

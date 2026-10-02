@@ -84,6 +84,6 @@ Ask uses Gemini 2.5 Flash. Google AI Studio offers a free API tier, subject to G
   - `SUPABASE_URL`: the Supabase project URL.
   - `SUPABASE_ANON_KEY`: the Supabase anon/publishable key, used only to verify signed-in users.
   - `SUPABASE_SERVICE_ROLE_KEY`: the Supabase service-role/secret key, used only for the quota RPC.
-4. Keep `GEMINI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` out of all `VITE_` variables and client code. The Vercel project root should be the repository root so `/api/ask` is deployed as a function.
+4. Keep `GEMINI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` out of all `VITE_` variables and client code. `/api/ask` has an entrypoint at both the repository root and `adventure_planner/`, so it works with either Vercel Root Directory setting.
 
 For local use, export the same four variables in the shell that runs the server, apply the migration, then run `npm --prefix adventure_planner run build` followed by `npm --prefix adventure_planner start`. For Vite development, start the built server first and then run `npm --prefix adventure_planner run dev`; the `/api` requests are proxied to port 8099.
