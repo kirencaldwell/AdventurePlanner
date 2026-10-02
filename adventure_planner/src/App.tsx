@@ -2115,20 +2115,79 @@ function App() {
 
       const askingPerson = currentTrip.people.find(person => person.userId === session.user.id)?.name || null;
       const peopleById = new Map(currentTrip.people.map(person => [person.id, person.name]));
+      const gearById = new Map(gearCloset.map(gear => [gear.id, {
+        name: gear.name,
+        category: gear.category,
+        description: gear.description,
+        weight: gear.weight,
+        weightUnit: gear.weightUnit,
+      }]));
+      const personName = (personId: string | undefined) => personId ? peopleById.get(personId) || 'Unknown person' : undefined;
       const tripContext = {
         name: currentTrip.name,
         askingPerson,
         startDate: currentTrip.startDate,
         tags: currentTrip.tags,
         people: currentTrip.people.map(({ name }) => name),
+        caltopoUrl: currentTrip.caltopoUrl,
+        photosUrl: currentTrip.photosUrl,
+        weatherStatus: currentTrip.weatherStatus,
+        lastWeatherUpdate: currentTrip.lastWeatherUpdate,
+        weatherData: currentTrip.weatherData,
+        stravaLinks: (currentTrip.debriefStravaEmbeds || []).flatMap(embed =>
+          Array.from(embed.matchAll(/https?:\/\/[^\s"'<>]+/g), ([url]) => url)
+        ),
+        gearClosetItems: gearCloset
+          .filter(gear => currentTrip.categories.some(category => category.items.some(item =>
+            item.gearClosetItemId === gear.id
+            || Object.values(item.personGearItems || {}).some(personGear => personGear.gearClosetItemId === gear.id)
+          )))
+          .map(({ name, category, description, weight, weightUnit }) => ({ name, category, description, weight, weightUnit })),
         categories: currentTrip.categories.map(category => ({
           name: category.name,
           items: category.items.map(item => ({
             name: item.name,
             description: item.description,
+            weight: item.weight,
+            weightUnit: item.weightUnit,
             quantity: item.quantity,
+            personQuantities: Object.fromEntries(Object.entries(item.personQuantities || {}).map(([personId, quantity]) => [
+              personName(personId), quantity,
+            ])),
             statuses: Object.fromEntries(Object.entries(item.personStatuses || {}).map(([personId, status]) => [
-              peopleById.get(personId) || 'Unknown person', status,
+              personName(personId), status,
+            ])),
+            isGroupGear: item.isGroupGear,
+            broughtBy: personName(item.broughtByPersonId),
+            carriedBy: personName(item.carriedByPersonId),
+            forPeople: item.forPersonIds?.map(personName),
+            personCarriedBy: Object.fromEntries(Object.entries(item.personCarriedBy || {}).map(([personId, carrierId]) => [
+              personName(personId), personName(carrierId),
+            ])),
+            linkedGear: item.gearClosetItemId
+              ? gearById.get(item.gearClosetItemId) || {
+                  name: item.name,
+                  description: item.description,
+                  weight: item.weight,
+                  weightUnit: item.weightUnit,
+                }
+              : undefined,
+            personGear: Object.fromEntries(Object.entries(item.personGearItems || {}).map(([personId, gear]) => [
+              personName(personId), {
+                name: gear.name,
+                description: gear.description,
+                weight: gear.weight,
+                weightUnit: gear.weightUnit,
+                weightType: gear.weightType || 'base',
+                linkedGear: gear.gearClosetItemId
+                  ? gearById.get(gear.gearClosetItemId) || {
+                      name: gear.name,
+                      description: gear.description,
+                      weight: gear.weight,
+                      weightUnit: gear.weightUnit,
+                    }
+                  : undefined,
+              },
             ])),
           })),
         })),
@@ -2136,14 +2195,17 @@ function App() {
           location: day.location,
           description: day.description,
           notes: day.notes,
+          weatherLinks: day.weatherLinks,
           activities: (day.activities || []).map(activity => ({
             type: activity.type,
             description: activity.description,
             importance: activity.importance,
             miles: activity.miles,
             elevationGain: activity.elevationGain,
+            elevationLost: activity.elevationLost,
           })),
         })),
+        discussions: (currentTrip.debriefDiscussions || []).map(parseDiscussionString),
       };
       const response = await fetch('/api/ask', {
         method: 'POST',

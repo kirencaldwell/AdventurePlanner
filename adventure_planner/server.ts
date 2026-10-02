@@ -14,7 +14,7 @@ const PORT = 8099;
 const DATA_FILE = path.join(__dirname, 'trips.json');
 
 app.use(cors());
-app.use(bodyParser.json({ limit: '64kb' }));
+app.use(bodyParser.json({ limit: '128kb' }));
 
 // GLOBAL LOGGER for debugging Ingress paths
 app.use((req, res, next) => {
