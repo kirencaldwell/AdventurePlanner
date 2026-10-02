@@ -332,34 +332,54 @@ interface PersonPackingStats {
   totalCount: number;    // all items not 'not-bringing'
   packedPercent: number; // 0-100
   plannedWeightOz: number; // total weight of non-'not-bringing' items
+  packedWeightOz: number; // fully-packed + in-car items
   baseWeightOz: number;    // base weight
   wornWeightOz: number;    // worn weight
   foodWeightOz: number;    // food weight
+  packedBaseWeightOz: number;
+  packedWornWeightOz: number;
+  packedFoodWeightOz: number;
+  weightedItemCount: number;
+  packedWeightedItemCount: number;
 }
 
 // Compute packing stats per person, optionally scoped to one category
 const calcPersonPackingStats = (
   trip: Trip,
-  categoryId?: string
+  categoryId?: string,
+  gearClosetItems: GearClosetItem[] = []
 ): PersonPackingStats[] => {
   const categories = categoryId
     ? trip.categories.filter(c => c.id === categoryId)
     : trip.categories;
+  const gearClosetById = new Map(gearClosetItems.map(item => [item.id, item]));
 
   const totalWeightByPerson: Record<string, number> = {};
+  const packedWeightByPerson: Record<string, number> = {};
   const baseWeightByPerson: Record<string, number> = {};
   const wornWeightByPerson: Record<string, number> = {};
   const foodWeightByPerson: Record<string, number> = {};
+  const packedBaseWeightByPerson: Record<string, number> = {};
+  const packedWornWeightByPerson: Record<string, number> = {};
+  const packedFoodWeightByPerson: Record<string, number> = {};
   const packedCount: Record<string, number> = {};
   const totalCount: Record<string, number> = {};
+  const weightedItemCount: Record<string, number> = {};
+  const packedWeightedItemCount: Record<string, number> = {};
 
   for (const person of trip.people) {
     totalWeightByPerson[person.id] = 0;
+    packedWeightByPerson[person.id] = 0;
     baseWeightByPerson[person.id] = 0;
     wornWeightByPerson[person.id] = 0;
     foodWeightByPerson[person.id] = 0;
+    packedBaseWeightByPerson[person.id] = 0;
+    packedWornWeightByPerson[person.id] = 0;
+    packedFoodWeightByPerson[person.id] = 0;
     packedCount[person.id] = 0;
     totalCount[person.id] = 0;
+    weightedItemCount[person.id] = 0;
+    packedWeightedItemCount[person.id] = 0;
   }
 
   for (const cat of categories) {
@@ -379,9 +399,11 @@ const calcPersonPackingStats = (
 
         // Determine the weight for this person's item
         const customGear = item.personGearItems?.[person.id];
-        const w = customGear ? customGear.weight : item.weight;
-        const u = customGear ? customGear.weightUnit : item.weightUnit;
+        const linkedGear = gearClosetById.get(customGear?.gearClosetItemId || item.gearClosetItemId || '');
+        const w = customGear?.weight ?? linkedGear?.weight ?? item.weight;
+        const u = customGear?.weightUnit ?? linkedGear?.weightUnit ?? item.weightUnit;
         const itemWeightOz = toOz(w, u) * personQty;
+        const hasWeight = w !== undefined && w !== null && w !== '' && Number.isFinite(parseFloat(String(w)));
 
         // Weight category (worn, food, or base)
         const weightType = customGear?.weightType;
@@ -395,6 +417,18 @@ const calcPersonPackingStats = (
             : person.id;
 
         totalWeightByPerson[targetPersonId] += itemWeightOz;
+        if (hasWeight) weightedItemCount[targetPersonId]++;
+        if (status === 'fully-packed' || status === 'in-car') {
+          packedWeightByPerson[targetPersonId] += itemWeightOz;
+          if (hasWeight) packedWeightedItemCount[targetPersonId]++;
+          if (weightType === 'worn') {
+            packedWornWeightByPerson[targetPersonId] += itemWeightOz;
+          } else if (weightType === 'food') {
+            packedFoodWeightByPerson[targetPersonId] += itemWeightOz;
+          } else {
+            packedBaseWeightByPerson[targetPersonId] += itemWeightOz;
+          }
+        }
         if (weightType === 'worn') {
           wornWeightByPerson[targetPersonId] += itemWeightOz;
         } else if (weightType === 'food') {
@@ -415,9 +449,15 @@ const calcPersonPackingStats = (
         ? Math.round(((packedCount[person.id] ?? 0) / (totalCount[person.id] ?? 0)) * 100)
         : 0,
     plannedWeightOz: totalWeightByPerson[person.id] ?? 0,
+    packedWeightOz: packedWeightByPerson[person.id] ?? 0,
     baseWeightOz: baseWeightByPerson[person.id] ?? 0,
     wornWeightOz: wornWeightByPerson[person.id] ?? 0,
     foodWeightOz: foodWeightByPerson[person.id] ?? 0,
+    packedBaseWeightOz: packedBaseWeightByPerson[person.id] ?? 0,
+    packedWornWeightOz: packedWornWeightByPerson[person.id] ?? 0,
+    packedFoodWeightOz: packedFoodWeightByPerson[person.id] ?? 0,
+    weightedItemCount: weightedItemCount[person.id] ?? 0,
+    packedWeightedItemCount: packedWeightedItemCount[person.id] ?? 0,
   }));
 };
 
@@ -2129,6 +2169,23 @@ function App() {
         startDate: currentTrip.startDate,
         tags: currentTrip.tags,
         people: currentTrip.people.map(({ name }) => name),
+        packingSummary: calcPersonPackingStats(currentTrip, undefined, gearCloset).map(stats => ({
+          person: personName(stats.personId),
+          packedItems: stats.packedCount,
+          includedItems: stats.totalCount,
+          weightRecordedForItems: stats.weightedItemCount,
+          packedWeight: formatWeight(stats.packedWeightOz),
+          packedWeightOz: stats.packedWeightOz,
+          packedWeightedItems: stats.packedWeightedItemCount,
+          plannedWeight: formatWeight(stats.plannedWeightOz),
+          plannedWeightOz: stats.plannedWeightOz,
+          plannedBaseWeight: formatWeight(stats.baseWeightOz),
+          plannedWornWeight: formatWeight(stats.wornWeightOz),
+          plannedFoodWeight: formatWeight(stats.foodWeightOz),
+          packedBaseWeight: formatWeight(stats.packedBaseWeightOz),
+          packedWornWeight: formatWeight(stats.packedWornWeightOz),
+          packedFoodWeight: formatWeight(stats.packedFoodWeightOz),
+        })),
         caltopoUrl: currentTrip.caltopoUrl,
         photosUrl: currentTrip.photosUrl,
         weatherStatus: currentTrip.weatherStatus,
@@ -3600,7 +3657,7 @@ function App() {
               />
             </div>
             {currentTrip.people.length > 0 && (() => {
-              const packingStats = calcPersonPackingStats(currentTrip);
+              const packingStats = calcPersonPackingStats(currentTrip, undefined, gearCloset);
               return (
                 <div className="trip-packing-status">
                   <h3 className="packing-status-heading">Packed Status</h3>
@@ -4050,7 +4107,7 @@ function App() {
                   <tr>
                     <th>Item</th>
                     {currentTrip.people.map(p => {
-                      const listStats = calcPersonPackingStats(currentTrip, activeCategory.id);
+                      const listStats = calcPersonPackingStats(currentTrip, activeCategory.id, gearCloset);
                       const personStat = listStats.find(s => s.personId === p.id);
                       return (
                         <th key={p.id} className="person-col-header">
