@@ -123,7 +123,8 @@ export async function handleAsk(request: AskRequest, response: AskResponse) {
       },
     );
     if (!geminiResponse.ok) {
-      console.error('Gemini request failed:', geminiResponse.status);
+      const providerError = await geminiResponse.json().catch(() => null) as { error?: { message?: string } } | null;
+      console.error('Gemini request failed:', geminiResponse.status, providerError?.error?.message || 'No provider message');
       response.status(503).json({ error: 'Gemini could not answer right now. Try again shortly.' });
       return;
     }
@@ -136,7 +137,9 @@ export async function handleAsk(request: AskRequest, response: AskResponse) {
       return;
     }
     response.status(200).json({ answer });
-  } catch {
+  } catch (error) {
+    const details = error instanceof Error ? `${error.name}: ${error.message}` : 'Unknown error';
+    console.error('Gemini request errored:', details);
     response.status(503).json({ error: 'Gemini could not answer right now. Try again shortly.' });
   }
 }
