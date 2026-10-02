@@ -46,8 +46,15 @@ export async function handleAsk(request: AskRequest, response: AskResponse) {
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const geminiApiKey = process.env.GEMINI_API_KEY;
+  const missingVariables = [
+    !supabaseUrl && 'SUPABASE_URL',
+    !supabaseAnonKey && 'SUPABASE_ANON_KEY',
+    !supabaseServiceKey && 'SUPABASE_SERVICE_ROLE_KEY',
+    !geminiApiKey && 'GEMINI_API_KEY',
+  ].filter((name): name is string => Boolean(name));
   if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey || !geminiApiKey) {
-    response.status(503).json({ error: 'Ask is not configured on the server yet.' });
+    console.error('Ask server is missing environment variables:', missingVariables.join(', '));
+    response.status(503).json({ error: 'Ask is not configured on the server yet.', missing: missingVariables });
     return;
   }
 
