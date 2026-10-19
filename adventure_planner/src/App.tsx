@@ -1710,6 +1710,13 @@ function App() {
     setActiveTab('trip');
   };
 
+  const editTemplate = (template: Trip) => {
+    setAccessDeniedTrip(null);
+    setCurrentTripId(template.id);
+    setView('trip-detail');
+    setActiveTab('trip');
+  };
+
   const deleteTemplate = async (template: Trip) => {
     if (!await confirmDialog({ title: `Delete the template “${template.name}”?`, confirmLabel: 'Delete', danger: true })) return;
     const { error } = await supabase.from('trips').delete().eq('id', template.id);
@@ -2104,6 +2111,7 @@ function App() {
           templates={trips.filter(trip => trip.isTemplate)}
           userId={user.id}
           onUseTemplate={useTemplate}
+          onEditTemplate={editTemplate}
           onDeleteTemplate={deleteTemplate}
         />
         {toastMessage && <div className="app-toast" role="status">{toastMessage}</div>}
@@ -2319,6 +2327,7 @@ function App() {
       {globalNav}
       <TripHeader
         navigateToDashboard={navigateToDashboard}
+        openTemplates={openTemplates}
         currentTrip={currentTrip}
         setCurrentTripId={setCurrentTripId}
         trips={trips}

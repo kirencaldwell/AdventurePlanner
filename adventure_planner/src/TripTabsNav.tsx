@@ -22,30 +22,36 @@ export function TripTabsNav({
       >
         Trip
       </button>
-      <button 
-        className={activeTab === 'weather' ? 'active' : ''} 
-        onClick={() => setActiveTab('weather')}
-      >
-        Weather
-      </button>
+      {!currentTrip.isTemplate && (
+        <button 
+          className={activeTab === 'weather' ? 'active' : ''} 
+          onClick={() => setActiveTab('weather')}
+        >
+          Weather
+        </button>
+      )}
       <button 
         className={activeTab === 'caltopo' ? 'active' : ''} 
         onClick={() => setActiveTab('caltopo')}
       >
         Caltopo
       </button>
-      <button 
-        className={activeTab === 'not-packed' ? 'active' : ''} 
-        onClick={() => setActiveTab('not-packed')}
-      >
-        Not Packed
-      </button>
-      <button 
-        className={activeTab === 'debrief' ? 'active' : ''} 
-        onClick={() => setActiveTab('debrief')}
-      >
-        Debrief
-      </button>
+      {!currentTrip.isTemplate && (
+        <>
+          <button 
+            className={activeTab === 'not-packed' ? 'active' : ''} 
+            onClick={() => setActiveTab('not-packed')}
+          >
+            Not Packed
+          </button>
+          <button 
+            className={activeTab === 'debrief' ? 'active' : ''} 
+            onClick={() => setActiveTab('debrief')}
+          >
+            Debrief
+          </button>
+        </>
+      )}
       <span className="tabs-divider" aria-hidden="true" />
       {currentTrip.categories.map(cat => (
         <button 

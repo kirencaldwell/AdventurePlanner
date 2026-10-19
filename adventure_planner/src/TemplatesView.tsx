@@ -5,11 +5,13 @@ export const TemplatesView = ({
   templates,
   userId,
   onUseTemplate,
+  onEditTemplate,
   onDeleteTemplate,
 }: {
   templates: Trip[];
   userId: string;
   onUseTemplate: (template: Trip) => void;
+  onEditTemplate: (template: Trip) => void;
   onDeleteTemplate: (template: Trip) => void;
 }) => (
   <main className="dashboard-container">
@@ -39,7 +41,10 @@ export const TemplatesView = ({
               <div className="template-card-actions">
                 <button type="button" className="new-trip-btn" onClick={() => onUseTemplate(template)}>Use Template</button>
                 {template.userId === userId && (
-                  <button type="button" className="danger" onClick={() => onDeleteTemplate(template)}>Delete</button>
+                  <>
+                    <button type="button" onClick={() => onEditTemplate(template)}>Edit</button>
+                    <button type="button" className="danger" onClick={() => onDeleteTemplate(template)}>Delete</button>
+                  </>
                 )}
               </div>
             </article>
