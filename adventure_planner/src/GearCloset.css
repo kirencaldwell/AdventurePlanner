@@ -97,8 +97,8 @@
 
 .gear-closet-search-input:focus {
   outline: none;
-  border-color: #0284c7;
-  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
 }
 
 .gear-closet-category-filter {
@@ -120,7 +120,7 @@
 }
 
 .btn-add-gear {
-  background: #0284c7;
+  background: #16a34a;
   color: #ffffff;
   padding: 0.55rem 1.15rem;
   border-radius: 8px;
@@ -135,8 +135,7 @@
 }
 
 .btn-add-gear:hover {
-  background: #0369a1;
-  transform: translateY(-1px);
+  background: #15803d;
 }
 
 .btn-sample-gear {
@@ -448,7 +447,7 @@
 }
 
 .btn-primary {
-  background: #0284c7;
+  background: #16a34a;
   border: none;
   color: #ffffff;
   padding: 0.55rem 1.25rem;
@@ -460,10 +459,34 @@
 }
 
 .btn-primary:hover {
-  background: #0369a1;
+  background: #15803d;
 }
 
 .btn-primary:disabled {
   background: #94a3b8;
   cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .gear-closet-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+
+  .gear-closet-stat-card {
+    padding: 0.75rem;
+  }
+
+  .stat-card-label {
+    font-size: 0.65rem;
+  }
+
+  .stat-card-value {
+    font-size: 1.25rem;
+  }
+
+  .gear-closet-search-filter {
+    min-width: 0;
+  }
 }
