@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import './GearCloset.css';
 import type { GearClosetItem } from './types';
 import { GEAR_CLOSET_CATEGORIES } from './constants';
+import { confirmDialog } from './dialogs';
 
 interface GearClosetProps {
   items: GearClosetItem[];
@@ -300,8 +301,8 @@ export const GearClosetView: React.FC<GearClosetProps> = ({
                       <button
                         type="button"
                         className="gear-action-btn delete"
-                        onClick={() => {
-                          if (confirm(`Remove "${item.name}" from your Gear Closet?`)) {
+                        onClick={async () => {
+                          if (await confirmDialog({ title: `Remove “${item.name}” from your Gear Closet?`, confirmLabel: 'Remove', danger: true })) {
                             onDeleteItem(item.id);
                           }
                         }}

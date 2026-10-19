@@ -8,6 +8,7 @@ import { supabase } from './supabaseClient';
 import { AuthScreen } from './AuthScreen';
 import { ShareModal } from './ShareModal';
 import LocationMapPicker from './LocationMapPicker';
+import { alertDialog, confirmDialog, promptDialog } from './dialogs';
 import { Analytics } from "@vercel/analytics/react";
 import type { User } from '@supabase/supabase-js';
 import { GearClosetView } from './GearCloset';
@@ -509,9 +510,8 @@ const formatForecastStartLabel = (startDate: string): string => {
     const targetUtc = toUtcMidnight(startDate);
     const todayUtc = toUtcMidnight(getTodayString());
     const diffDays = Math.round((targetUtc.getTime() - todayUtc.getTime()) / msPerDay);
-    const weekday = targetUtc.toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' });
-    if (diffDays <= 0) return `Today (${weekday})`;
-    return weekday;
+    if (diffDays <= 0) return 'Today';
+    return targetUtc.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' });
   } catch {
     return startDate;
   }
@@ -692,6 +692,8 @@ const TripDashboard = ({
   forecastData,
   onOpenWeatherDetail,
   onCopyTripLink,
+  templateCount,
+  onOpenTemplates,
 }: {
   trips: Trip[];
   filters: TripDashboardFilters;
@@ -702,6 +704,8 @@ const TripDashboard = ({
   forecastData: Record<string, StartingDayForecast[]>;
   onOpenWeatherDetail: (trip: Trip, forecastDate: string) => void;
   onCopyTripLink: (tripId: string) => void;
+  templateCount: number;
+  onOpenTemplates: () => void;
 }) => {
   const hasActiveFilters = Object.values(filters).some(value =>
     Array.isArray(value) ? value.length > 0 : value.trim() !== ''
@@ -758,10 +762,35 @@ const TripDashboard = ({
     <header className="dashboard-header">
       <h1>My Trips</h1>
       <div className="dashboard-actions">
-        <button onClick={onRefreshAllWeather} className="refresh-weather-btn">🔄 Refresh Weather</button>
+        {trips.length > 0 && (
+          <button onClick={onRefreshAllWeather} className="refresh-weather-btn">🔄 Refresh Weather</button>
+        )}
         <button onClick={onNewTrip} className="new-trip-btn">+ New Trip</button>
       </div>
     </header>
+    {trips.length === 0 ? (
+      <section className="first-run-empty" aria-labelledby="first-run-heading">
+        <div className="first-run-icon" aria-hidden="true">🏔️</div>
+        <h2 id="first-run-heading">Plan your first adventure</h2>
+        <p>
+          Create a trip to map out each day, check the weather window, and build a shared packing list
+          with everyone coming along.
+        </p>
+        <div className="first-run-actions">
+          <button type="button" className="new-trip-btn" onClick={onNewTrip}>+ Create your first trip</button>
+          {templateCount > 0 && (
+            <button type="button" className="refresh-weather-btn" onClick={onOpenTemplates}>
+              Start from a template ({templateCount})
+            </button>
+          )}
+        </div>
+        <ul className="first-run-steps">
+          <li><strong>Plan the days</strong><span>Add locations, mileage and elevation for each day.</span></li>
+          <li><strong>Watch the weather</strong><span>See which start dates in the next week look best.</span></li>
+          <li><strong>Pack together</strong><span>Track who has packed what, and who carries the group gear.</span></li>
+        </ul>
+      </section>
+    ) : (<>
     <section className={`trip-filter-panel ${filtersOpen ? 'open' : 'collapsed'}`} aria-labelledby="trip-filter-heading">
       <div className="trip-filter-header">
         <h2 id="trip-filter-heading">
@@ -849,7 +878,7 @@ const TripDashboard = ({
     <div className="trip-list">
       {filteredTrips.length === 0 ? (
         <div className="trip-filter-empty" role="status">
-          {trips.length === 0 ? 'No trips yet.' : 'No trips match these filters.'}
+          No trips match these filters.
         </div>
       ) : filteredTrips.map((trip) => {
         const stats = calculateTripStats(trip);
@@ -911,12 +940,17 @@ const TripDashboard = ({
                   <div className="forecast-grid">
                     {forecasts.map((fd) => {
                       const goodDays = fd.totalDays - fd.stormyCount;
+                      const aqiValues = fd.days.map(d => d.aqi).filter((aqi): aqi is number => typeof aqi === 'number');
+                      const maxAqi = aqiValues.length > 0 ? Math.max(...aqiValues) : null;
+                      const dayDetails = fd.days.map((d, idx) => `Day ${idx + 1}: ${d.summary}${d.aqi ? ' • AQI ' + d.aqi : ''}`).join('\n');
                       return (
                         <div
                           key={fd.startDate}
                           className={`forecast-card likelihood-${likelihoodClass(fd.likelihood)}`}
                           role="button"
                           tabIndex={0}
+                          title={`Starting ${fd.startDate}: ${goodDays}/${tripDayCount} good days\n${dayDetails}\nClick for full details`}
+                          aria-label={`Starting ${formatForecastStartLabel(fd.startDate)}: ${fd.likelihood}% chance of good weather, ${goodDays} of ${tripDayCount} good days`}
                           onClick={(e) => {
                             e.stopPropagation();
                             onOpenWeatherDetail(trip, fd.startDate);
@@ -930,18 +964,15 @@ const TripDashboard = ({
                           }}
                         >
                           <div className="forecast-date">{formatForecastStartLabel(fd.startDate)}</div>
-                          <div className="forecast-likelihood-pct">{fd.likelihood}%</div>
-                          <div className="forecast-window-summary">{goodDays}/{tripDayCount} good days</div>
-                          <div className="forecast-days-icons">
+                          <div className="forecast-days-icons" aria-hidden="true">
                             {fd.days.map((d, idx) => (
-                              <span key={idx} className="forecast-day-icon" title={`Day ${idx + 1}: ${d.summary}${d.aqi ? ' • AQI ' + d.aqi : ''}`}>
-                                {weatherCodeEmoji(d.weatherCode)}
-                                {typeof d.aqi === 'number' && (
-                                  <span className={`aqi-badge aqi-${getAqiCategory(d.aqi)}`}>{d.aqi}</span>
-                                )}
-                              </span>
+                              <span key={idx} className="forecast-day-icon">{weatherCodeEmoji(d.weatherCode)}</span>
                             ))}
                           </div>
+                          <div className="forecast-likelihood-pct">{fd.likelihood}%</div>
+                          {maxAqi !== null && maxAqi > 50 && (
+                            <span className={`forecast-aqi aqi-${getAqiCategory(maxAqi)}`}>AQI {maxAqi}</span>
+                          )}
                         </div>
                       );
                     })}
@@ -955,6 +986,7 @@ const TripDashboard = ({
         );
       })}
     </div>
+    </>)}
   </div>
   );
 };
@@ -977,7 +1009,7 @@ const TemplatesView = ({
     {templates.length === 0 ? (
       <div className="trip-filter-empty">
         <h2>No templates yet</h2>
-        <p>Open a trip and choose “Save as Template” to add a reusable starting point.</p>
+        <p>Open a trip and choose More → Save as Template to add a reusable starting point.</p>
       </div>
     ) : (
       <div className="template-list">
@@ -1930,8 +1962,14 @@ function App() {
     }));
   };
 
-  const removePerson = (personId: string) => {
-    if (!confirm('Are you sure you want to remove this person from the trip?')) return;
+  const removePerson = async (personId: string) => {
+    const person = currentTrip?.people.find(p => p.id === personId);
+    if (!await confirmDialog({
+      title: `Remove ${person?.name || 'this person'} from the trip?`,
+      message: 'Their packing column will be removed.',
+      confirmLabel: 'Remove',
+      danger: true,
+    })) return;
 
     updateCurrentTrip(trip => ({
       ...trip,
@@ -2329,9 +2367,13 @@ function App() {
     }
   };
 
-  const promptForCustomActivityType = (currentValue: string) => {
-    if (typeof window === 'undefined') return null;
-    const result = window.prompt('Enter a custom activity type:', currentValue && currentValue !== 'custom' ? currentValue : '');
+  const promptForCustomActivityType = async (currentValue: string) => {
+    const result = await promptDialog({
+      title: 'Custom activity type',
+      label: 'Activity type',
+      placeholder: 'e.g. Packrafting',
+      defaultValue: currentValue && currentValue !== 'custom' ? currentValue : '',
+    });
     return result?.trim() || null;
   };
 
@@ -2574,8 +2616,13 @@ function App() {
     }));
   };
 
-  const resetTab = (categoryId: string) => {
-    if (!confirm('Are you sure you want to reset all item statuses for this tab?')) return;
+  const resetTab = async (categoryId: string) => {
+    if (!await confirmDialog({
+      title: 'Reset this list to Not Packed?',
+      message: 'Every item on this tab goes back to Not Packed for everyone.',
+      confirmLabel: 'Reset List',
+      danger: true,
+    })) return;
 
     updateCurrentTrip(trip => ({
       ...trip,
@@ -2609,8 +2656,13 @@ function App() {
     }));
   };
 
-  const resetTrip = () => {
-    if (!confirm('Are you sure you want to reset all item statuses for the entire trip?')) return;
+  const resetTrip = async () => {
+    if (!await confirmDialog({
+      title: 'Reset all items to Not Packed?',
+      message: 'Every item on every packing list goes back to Not Packed for everyone.',
+      confirmLabel: 'Reset Items',
+      danger: true,
+    })) return;
 
     updateCurrentTrip(trip => ({
       ...trip,
@@ -2627,7 +2679,7 @@ function App() {
     
     const activeCategory = currentTrip.categories.find(c => c.id === activeTab);
     if (!activeCategory || activeCategory.items.length === 0) {
-      alert('This packing list is empty.');
+      void alertDialog('This packing list is empty.', 'Add some items before copying it to another trip.');
       return;
     }
 
@@ -2684,7 +2736,8 @@ function App() {
 
     setCopyListModalOpen(false);
     setCopyListDestinationTripId('');
-    alert(`Packing list copied successfully!`);
+    setToastMessage('Packing list copied.');
+    setTimeout(() => setToastMessage(null), 2500);
   };
 
   const createTripCopy = (sourceTrip: Trip, name: string, isTemplate: boolean, resetTripDetails = true): Trip => {
@@ -2735,9 +2788,14 @@ function App() {
     });
   };
 
-  const saveCurrentTripAsTemplate = () => {
+  const saveCurrentTripAsTemplate = async () => {
     if (!currentTrip || !user || currentTrip.userId !== user.id) return;
-    const templateName = window.prompt('Template Name?', `${currentTrip.name} Template`)?.trim();
+    const templateName = (await promptDialog({
+      title: 'Save as template',
+      label: 'Template name',
+      defaultValue: `${currentTrip.name} Template`,
+      confirmLabel: 'Save Template',
+    }))?.trim();
     if (!templateName) return;
     const template = createTripCopy(currentTrip, templateName, true);
     setTrips(previousTrips => [...previousTrips, template]);
@@ -2754,11 +2812,11 @@ function App() {
   };
 
   const deleteTemplate = async (template: Trip) => {
-    if (!confirm(`Delete the template “${template.name}”?`)) return;
+    if (!await confirmDialog({ title: `Delete the template “${template.name}”?`, confirmLabel: 'Delete', danger: true })) return;
     const { error } = await supabase.from('trips').delete().eq('id', template.id);
     if (error) {
       console.error('Failed to delete template:', error);
-      alert('Failed to delete template.');
+      void alertDialog('Could not delete the template.', 'Check your connection and try again.');
       return;
     }
     setTrips(previousTrips => previousTrips.filter(trip => trip.id !== template.id));
@@ -2774,7 +2832,12 @@ function App() {
 
   const deleteTrip = async () => {
     if (!currentTrip) return;
-    if (!confirm(`Are you sure you want to permanently delete the trip "${currentTrip.name}"?`)) return;
+    if (!await confirmDialog({
+      title: `Delete “${currentTrip.name}”?`,
+      message: 'This permanently deletes the trip for everyone it is shared with.',
+      confirmLabel: 'Delete Trip',
+      danger: true,
+    })) return;
 
     const remainingTrips = trips.filter(t => t.id !== currentTripId);
     
@@ -2782,7 +2845,7 @@ function App() {
     const { error } = await supabase.from('trips').delete().eq('id', currentTripId);
     if (error) {
       console.error('Failed to delete trip from Supabase:', error);
-      alert('Failed to delete trip from server.');
+      void alertDialog('Could not delete the trip.', 'Check your connection and try again.');
       return;
     }
 
@@ -2801,11 +2864,16 @@ function App() {
   
     const isActuallyOwner = user.id === currentTrip.userId;
     if (isActuallyOwner) {
-      alert("Owners cannot leave their own trip. Use 'Delete Trip' instead.");
+      void alertDialog('You own this trip.', "Owners can't leave their own trip. Use Delete Trip instead.");
       return;
     }
   
-    if (!confirm(`Are you sure you want to remove yourself from the trip "${currentTrip.name}"?`)) return;
+    if (!await confirmDialog({
+      title: `Leave “${currentTrip.name}”?`,
+      message: 'The trip will disappear from your list. The owner can add you back.',
+      confirmLabel: 'Leave Trip',
+      danger: true,
+    })) return;
   
     const remainingTrips = trips.filter(t => t.id !== currentTripId);
   
@@ -2826,7 +2894,7 @@ function App() {
   
       if (updateError) {
         console.error('Both RPC and fallback update failed:', updateError);
-        alert('Failed to remove yourself from the trip on the server.');
+        void alertDialog('Could not leave the trip.', 'Check your connection and try again.');
         return;
       }
     }
@@ -2844,8 +2912,13 @@ function App() {
     updateCurrentTrip(trip => ({ ...trip, name, lastModified: Date.now() }));
   };
 
-  const addCategory = () => {
-    const name = prompt('New Tab Name?');
+  const addCategory = async () => {
+    const name = (await promptDialog({
+      title: 'New packing list',
+      label: 'List name',
+      placeholder: 'e.g. Kitchen',
+      confirmLabel: 'Add List',
+    }))?.trim();
     if (!name) return;
     const newId = generateId();
     updateCurrentTrip(trip => ({
@@ -2886,8 +2959,14 @@ function App() {
     }));
   };
 
-  const addStrava = () => {
-    const input = window.prompt('Paste Strava embed HTML (you can paste multiple embeds)');
+  const addStrava = async () => {
+    const input = await promptDialog({
+      title: 'Add Strava activity',
+      message: 'On Strava, open the activity, choose Share → Embed, and paste the code here. You can paste several at once.',
+      label: 'Embed code',
+      multiline: true,
+      confirmLabel: 'Add',
+    });
     if (!input) return;
 
     const embeds = parseStravaEmbeds(input);
@@ -2906,10 +2985,15 @@ function App() {
     }));
   };
 
-  const deleteCategory = (id: string) => {
+  const deleteCategory = async (id: string) => {
     const category = currentTrip?.categories.find(cat => cat.id === id);
     if (!category) return;
-    if (!confirm(`Are you sure you want to delete "${category.name}" and all its items?`)) return;
+    if (!await confirmDialog({
+      title: `Delete the “${category.name}” list?`,
+      message: 'All of its items will be deleted too.',
+      confirmLabel: 'Delete List',
+      danger: true,
+    })) return;
     updateCurrentTrip(trip => ({
       ...trip,
       categories: trip.categories.filter(cat => cat.id !== id),
@@ -3148,6 +3232,12 @@ function App() {
           forecastData={forecastData}
           onOpenWeatherDetail={openWeatherDetail}
           onCopyTripLink={handleCopyTripLink}
+          templateCount={trips.filter(trip => trip.isTemplate).length}
+          onOpenTemplates={() => {
+            setAccessDeniedTrip(null);
+            setCurrentTripId(null);
+            setView('templates');
+          }}
         />
         {selectedWeatherDetail.isOpen && selectedWeatherDetail.row && (
           <div className="weather-detail-modal-backdrop" onClick={closeWeatherDetail}>
@@ -3337,8 +3427,13 @@ function App() {
             <details className="trip-more-menu" ref={tripMenuRef}>
               <summary aria-label="More trip actions">More ▾</summary>
               <div className="trip-more-menu-list" onClick={closeTripMenu}>
-                <button onClick={() => {
-                  const name = prompt('Trip Name?');
+                <button onClick={async () => {
+                  const name = (await promptDialog({
+                    title: 'Create a new trip',
+                    label: 'Trip name',
+                    placeholder: 'e.g. Enchantments thru-hike',
+                    confirmLabel: 'Create Trip',
+                  }))?.trim();
                   if (name) createNewTrip(name);
                 }}>Create New Trip</button>
                 <button onClick={copyTrip}>Copy Trip</button>
@@ -3393,8 +3488,13 @@ function App() {
                   </button>
                 </span>
               ))}
-              <button onClick={() => {
-                const name = prompt('Person Name?');
+              <button onClick={async () => {
+                const name = (await promptDialog({
+                  title: 'Add a packer',
+                  label: 'Name',
+                  placeholder: 'e.g. Sam',
+                  confirmLabel: 'Add',
+                }))?.trim();
                 if (name) addPerson(name);
               }}>+ Add Person</button>
             </div>
@@ -3425,7 +3525,7 @@ function App() {
                 } else {
                   const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
                   if (!SpeechRecognition) {
-                    alert('Speech Recognition not supported in this browser.');
+                    void alertDialog('Voice input is not supported in this browser.', 'Try Chrome or Safari, or type your question instead.');
                     return;
                   }
                   if (recognitionRef.current) {
@@ -3999,10 +4099,11 @@ function App() {
                                       onChange={(e) => {
                                         const selectedValue = e.target.value;
                                         if (selectedValue === 'custom') {
-                                          const customType = promptForCustomActivityType(activity.type);
-                                          if (customType) {
-                                            updateTripDayActivity(editingDay.id, activity.id, { type: customType });
-                                          }
+                                          void promptForCustomActivityType(activity.type).then(customType => {
+                                            if (customType) {
+                                              updateTripDayActivity(editingDay.id, activity.id, { type: customType });
+                                            }
+                                          });
                                         } else {
                                           updateTripDayActivity(editingDay.id, activity.id, { type: selectedValue as any });
                                         }
@@ -4284,100 +4385,121 @@ function App() {
                                   <option key={status.id} value={status.id}>{status.label}</option>
                                 ))}
                               </select>
-                              {personStatus !== 'not-bringing' && (
-                                <div className="cell-carried-by-row">
-                                  {currentTrip.people.length > 1 ? (
-                                    <div className="cell-carried-by-group">
-                                      <label className="cell-carried-by-label">📦 Carried by</label>
-                                      <select
-                                        className="cell-carried-by-select"
-                                        value={item.personCarriedBy?.[person.id] || ''}
-                                        onChange={(e) => setPersonCarriedBy(activeCategory.id, item.id, person.id, e.target.value || undefined)}
+                            {(() => {
+                              const carrierId = item.personCarriedBy?.[person.id];
+                              const carrier = carrierId ? currentTrip.people.find(p => p.id === carrierId) : undefined;
+                              const linkedGear = item.personGearItems?.[person.id];
+                              const chips = [
+                                personStatus !== 'not-bringing' && personQty > 1 ? `×${personQty}` : null,
+                                personStatus !== 'not-bringing' && carrier ? `Carried by ${carrier.name}` : null,
+                                linkedGear ? `🏷️ ${linkedGear.name}` : null,
+                              ].filter(Boolean) as string[];
+                              return (
+                                <details className="cell-details">
+                                  <summary title={`Quantity, carrier and gear for ${person.name}`}>
+                                    {chips.length > 0
+                                      ? chips.map(chip => <span key={chip} className="cell-detail-chip">{chip}</span>)
+                                      : <span className="cell-details-placeholder">Details</span>}
+                                  </summary>
+                                  <div className="cell-details-body">
+                                      {personStatus !== 'not-bringing' && (
+                                        <div className="cell-carried-by-row">
+                                          {currentTrip.people.length > 1 ? (
+                                            <div className="cell-carried-by-group">
+                                              <label className="cell-carried-by-label">📦 Carried by</label>
+                                              <select
+                                                className="cell-carried-by-select"
+                                                value={item.personCarriedBy?.[person.id] || ''}
+                                                onChange={(e) => setPersonCarriedBy(activeCategory.id, item.id, person.id, e.target.value || undefined)}
+                                              >
+                                                <option value="">— self —</option>
+                                                {currentTrip.people
+                                                  .filter(p => p.id !== person.id)
+                                                  .map(p => (
+                                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                                  ))}
+                                              </select>
+                                            </div>
+                                          ) : (
+                                            <div className="cell-qty-label-container">
+                                              <span className="cell-qty-label">Qty:</span>
+                                            </div>
+                                          )}
+                                          <div className="cell-qty-stepper">
+                                            <button
+                                              type="button"
+                                              className="cell-qty-btn"
+                                              onClick={() => updatePersonQuantity(activeCategory.id, item.id, person.id, personQty - 1)}
+                                              disabled={personQty <= 1}
+                                              title="Decrease quantity"
+                                            >−</button>
+                                            <span className="cell-qty-value">{personQty}</span>
+                                            <button
+                                              type="button"
+                                              className="cell-qty-btn"
+                                              onClick={() => updatePersonQuantity(activeCategory.id, item.id, person.id, personQty + 1)}
+                                              title="Increase quantity"
+                                            >+</button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    {item.personGearItems?.[person.id] && (
+                                      <div className="cell-linked-gear">
+                                        <span className="cell-linked-gear-name" title={item.personGearItems[person.id].description}>
+                                          🏷️ {item.personGearItems[person.id].name}
+                                        </span>
+                                        <span className="cell-linked-gear-weight">
+                                          ⚖️ {item.personGearItems[person.id].weight} {item.personGearItems[person.id].weightUnit || 'oz'}
+                                        </span>
+                                      </div>
+                                    )}
+                                    <div className="cell-action-row">
+                                      <button
+                                        type="button"
+                                        className="cell-closet-btn"
+                                        title={item.personGearItems?.[person.id] ? `Change gear closet item for ${person.name}` : `Link gear closet item for ${person.name}`}
+                                        onClick={() => {
+                                          setClosetPickerCategoryId(activeCategory.id);
+                                          setClosetPickerItemId(item.id);
+                                          setClosetPickerPersonId(person.id);
+                                          setClosetPickerOpen(true);
+                                        }}
                                       >
-                                        <option value="">— self —</option>
-                                        {currentTrip.people
-                                          .filter(p => p.id !== person.id)
-                                          .map(p => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                          ))}
-                                      </select>
+                                        {item.personGearItems?.[person.id] ? '🔄 Change' : '📦 Link Gear'}
+                                      </button>
+                                      {item.personGearItems?.[person.id] && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className={`cell-weight-type-btn ${item.personGearItems[person.id].weightType === 'worn' ? 'active' : ''}`}
+                                            title={item.personGearItems[person.id].weightType === 'worn' ? 'Currently Worn Weight (click to set Base Weight)' : 'Mark as Worn Weight'}
+                                            onClick={() => togglePersonGearWeightType(activeCategory.id, item.id, person.id, 'worn')}
+                                          >
+                                            👕
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={`cell-weight-type-btn ${item.personGearItems[person.id].weightType === 'food' ? 'active' : ''}`}
+                                            title={item.personGearItems[person.id].weightType === 'food' ? 'Currently Food Weight (click to set Base Weight)' : 'Mark as Food Weight'}
+                                            onClick={() => togglePersonGearWeightType(activeCategory.id, item.id, person.id, 'food')}
+                                          >
+                                            🍴
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="cell-unlink-btn"
+                                            title="Remove link to gear closet item"
+                                            onClick={() => removePersonGearLink(activeCategory.id, item.id, person.id)}
+                                          >
+                                            ✕
+                                          </button>
+                                        </>
+                                      )}
                                     </div>
-                                  ) : (
-                                    <div className="cell-qty-label-container">
-                                      <span className="cell-qty-label">Qty:</span>
-                                    </div>
-                                  )}
-                                  <div className="cell-qty-stepper">
-                                    <button
-                                      type="button"
-                                      className="cell-qty-btn"
-                                      onClick={() => updatePersonQuantity(activeCategory.id, item.id, person.id, personQty - 1)}
-                                      disabled={personQty <= 1}
-                                      title="Decrease quantity"
-                                    >−</button>
-                                    <span className="cell-qty-value">{personQty}</span>
-                                    <button
-                                      type="button"
-                                      className="cell-qty-btn"
-                                      onClick={() => updatePersonQuantity(activeCategory.id, item.id, person.id, personQty + 1)}
-                                      title="Increase quantity"
-                                    >+</button>
                                   </div>
-                                </div>
-                              )}
-                            {item.personGearItems?.[person.id] && (
-                              <div className="cell-linked-gear">
-                                <span className="cell-linked-gear-name" title={item.personGearItems[person.id].description}>
-                                  🏷️ {item.personGearItems[person.id].name}
-                                </span>
-                                <span className="cell-linked-gear-weight">
-                                  ⚖️ {item.personGearItems[person.id].weight} {item.personGearItems[person.id].weightUnit || 'oz'}
-                                </span>
-                              </div>
-                            )}
-                            <div className="cell-action-row">
-                              <button
-                                type="button"
-                                className="cell-closet-btn"
-                                title={item.personGearItems?.[person.id] ? `Change gear closet item for ${person.name}` : `Link gear closet item for ${person.name}`}
-                                onClick={() => {
-                                  setClosetPickerCategoryId(activeCategory.id);
-                                  setClosetPickerItemId(item.id);
-                                  setClosetPickerPersonId(person.id);
-                                  setClosetPickerOpen(true);
-                                }}
-                              >
-                                {item.personGearItems?.[person.id] ? '🔄 Change' : '📦 Link Gear'}
-                              </button>
-                              {item.personGearItems?.[person.id] && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className={`cell-weight-type-btn ${item.personGearItems[person.id].weightType === 'worn' ? 'active' : ''}`}
-                                    title={item.personGearItems[person.id].weightType === 'worn' ? 'Currently Worn Weight (click to set Base Weight)' : 'Mark as Worn Weight'}
-                                    onClick={() => togglePersonGearWeightType(activeCategory.id, item.id, person.id, 'worn')}
-                                  >
-                                    👕
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`cell-weight-type-btn ${item.personGearItems[person.id].weightType === 'food' ? 'active' : ''}`}
-                                    title={item.personGearItems[person.id].weightType === 'food' ? 'Currently Food Weight (click to set Base Weight)' : 'Mark as Food Weight'}
-                                    onClick={() => togglePersonGearWeightType(activeCategory.id, item.id, person.id, 'food')}
-                                  >
-                                    🍴
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="cell-unlink-btn"
-                                    title="Remove link to gear closet item"
-                                    onClick={() => removePersonGearLink(activeCategory.id, item.id, person.id)}
-                                  >
-                                    ✕
-                                  </button>
-                                </>
-                              )}
-                            </div>
+                                </details>
+                              );
+                            })()}
                           </div>
                         </td>
                       );
