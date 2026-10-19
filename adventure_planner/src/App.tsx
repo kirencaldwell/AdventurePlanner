@@ -1,1044 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
-import './App.css';
-import type { Trip, StatusId, TripActivity, TripDay, Item, Category, GearClosetItem } from './types';
-import type { StartingDayForecast } from './weatherUtils';
-import { fetchTripDashboardForecast, getTodayString, fetchWeatherForDay, isStormyWeatherCode, type WeatherRow, formatWind, formatVisibility, formatPrecip, formatSnow, formatElevation, getDayDate } from './weatherUtils';
-import { DEFAULT_STATUSES, GROUP_GEAR_CATEGORY_NAME, INITIAL_CATEGORIES, SAMPLE_GEAR_CLOSET_ITEMS } from './constants';
-import { supabase } from './supabaseClient';
-import { AuthScreen } from './AuthScreen';
-import { ShareModal } from './ShareModal';
-import LocationMapPicker from './LocationMapPicker';
-import { alertDialog, confirmDialog, promptDialog } from './dialogs';
-import { Analytics } from "@vercel/analytics/react";
 import type { User } from '@supabase/supabase-js';
+import { AuthScreen } from './AuthScreen';
+import { CaltopoTab } from './CaltopoTab';
+import { DebriefTab } from './DebriefTab';
 import { GearClosetView } from './GearCloset';
 import { GearClosetModal } from './GearClosetModal';
-
-
-const generateId = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-    const random = Math.floor(Math.random() * 16);
-    const value = char === 'x' ? random : (random & 0x3) | 0x8;
-    return value.toString(16);
-  });
-};
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export const isUuid = (value: string | null | undefined): value is string => {
-  return Boolean(value && UUID_PATTERN.test(value));
-};
-
-const parseVoicePackingUpdate = (input: string): { itemName: string; status: StatusId } | null => {
-  const statement = input.trim().replace(/[.!?]+$/, '');
-  const patterns: Array<{ expression: RegExp; status: StatusId }> = [
-    { expression: /^(?:i|i've|i have)\s+(?:fully\s+)?packed\s+(?:my\s+|the\s+)?(.+)$/i, status: 'fully-packed' },
-    { expression: /^(?:i|i've|i have)\s+(?:put|placed)\s+(?:my\s+|the\s+)?(.+?)\s+(?:in|into)\s+(?:the\s+)?car$/i, status: 'in-car' },
-    { expression: /^(?:i|i've|i have)\s+set\s+aside\s+(?:my\s+|the\s+)?(.+)$/i, status: 'set-aside' },
-    { expression: /^i\s+(?:have\s+not|haven't|did\s+not|didn't)\s+pack(?:ed)?\s+(?:my\s+|the\s+)?(.+)$/i, status: 'not-packed' },
-    { expression: /^i\s+need\s+to\s+buy\s+(?:my\s+|the\s+)?(.+)$/i, status: 'need-to-buy' },
-  ];
-
-  for (const { expression, status } of patterns) {
-    const match = statement.match(expression);
-    const itemName = match?.[1]?.trim();
-    if (itemName) return { itemName, status };
-  }
-  return null;
-};
-
-const normalizeVoiceItemName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
-export const getTripIdFromUrl = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search);
-  const tripParam = params.get('trip') || params.get('tripId') || params.get('join');
-  if (tripParam && tripParam.trim()) {
-    return tripParam.trim();
-  }
-  const match = window.location.pathname.match(/^\/trip\/([^/?#]+)/);
-  if (match) {
-    return decodeURIComponent(match[1]).trim();
-  }
-  return null;
-};
-
-export const getTripUrl = (tripId: string): string => {
-  if (typeof window === 'undefined') return `/?trip=${encodeURIComponent(tripId)}`;
-  return `${window.location.origin}/?trip=${encodeURIComponent(tripId)}`;
-};
-
-const clearTripParamsFromUrl = () => {
-  if (typeof window === 'undefined') return;
-  const url = new URL(window.location.href);
-  url.searchParams.delete('trip');
-  url.searchParams.delete('tripId');
-  url.searchParams.delete('join');
-  if (url.pathname.startsWith('/trip/')) {
-    url.pathname = '/';
-  }
-  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
-};
-
-
-const parseStravaEmbeds = (input: string) => {
-  const regex = /(<iframe[\s\S]*?<\/iframe>\s*(?:<script[\s\S]*?<\/script>\s*)*)|(<blockquote[\s\S]*?<\/blockquote>\s*(?:<script[\s\S]*?<\/script>\s*)*)/gi;
-  const matches = Array.from(input.matchAll(regex)).map(match => (match[1] || match[2] || '').trim()).filter(Boolean);
-  return matches.length > 0 ? matches : [input.trim()];
-};
-
-const parseDiscussionString = (raw: string) => {
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && typeof parsed.author === 'string' && typeof parsed.text === 'string') {
-      return parsed as { author: string; text: string };
-    }
-  } catch {
-    // ignore parse errors
-  }
-  return { author: 'Unknown', text: raw };
-};
-
-const formatDiscussionString = (author: string, text: string) => {
-  return JSON.stringify({ author, text });
-};
-
-const getCurrentUsername = (user: User | null) => {
-  if (!user) return 'Unknown';
-  const metadata = (user as any).user_metadata;
-  if (metadata?.full_name) return metadata.full_name;
-  if (metadata?.username) return metadata.username;
-  if (user.email) return user.email.split('@')[0];
-  return 'Unknown';
-};
-
-const canDeleteDiscussion = (user: User | null, currentTripUserId: string | undefined, author: string) => {
-  if (!user) return false;
-  if (currentTripUserId && user.id === currentTripUserId) return true;
-  return getCurrentUsername(user) === author;
-};
-
-const HtmlEmbed = ({ html }: { html: string }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    containerRef.current.innerHTML = html;
-    const scripts = Array.from(containerRef.current.querySelectorAll<HTMLScriptElement>('script'));
-    scripts.forEach(oldScript => {
-      const newScript = document.createElement('script');
-      Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-      newScript.text = oldScript.text;
-      oldScript.parentNode?.replaceChild(newScript, oldScript);
-    });
-  }, [html]);
-
-  return <div ref={containerRef} className="strava-card-content" />;
-};
-
-const STORAGE_KEYS = {
-  view: 'adventure-planner-view',
-  currentTripId: 'adventure-planner-current-trip-id',
-  activeTab: 'adventure-planner-active-tab',
-};
-
-type AppView = 'dashboard' | 'trip-detail' | 'gear-closet' | 'templates';
-
-const getStoredViewState = (): { view: AppView; currentTripId: string | null; activeTab: string } | null => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const urlTripId = getTripIdFromUrl();
-    const savedView = window.sessionStorage.getItem(STORAGE_KEYS.view);
-    const urlView = new URLSearchParams(window.location.search).get('view');
-    const savedTripId = window.sessionStorage.getItem(STORAGE_KEYS.currentTripId);
-    const savedActiveTab = window.sessionStorage.getItem(STORAGE_KEYS.activeTab);
-
-    if (urlTripId) {
-      return {
-        view: 'trip-detail',
-        currentTripId: urlTripId,
-        activeTab: savedActiveTab || 'trip',
-      };
-    }
-
-    return {
-      view: urlView === 'templates' || savedView === 'templates'
-        ? 'templates'
-        : urlView === 'gear-closet' || savedView === 'gear-closet'
-          ? 'gear-closet'
-          : savedView === 'trip-detail' ? 'trip-detail' : 'dashboard',
-      currentTripId: savedTripId || null,
-      activeTab: savedActiveTab || 'trip',
-    };
-  } catch {
-    return null;
-  }
-};
-
-const parseTripNumber = (value: string | undefined) => {
-  if (!value) return 0;
-  const match = value.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
-  if (!match) return 0;
-  const parsed = Number(match[0]);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const formatTripStatNumber = (value: number) => {
-  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-};
-
-const formatTripRange = (min: number, max: number, unit: string) => {
-  const formattedMin = formatTripStatNumber(min);
-  const formattedMax = formatTripStatNumber(max);
-  return min === max ? `${formattedMin} ${unit}` : `${formattedMin}-${formattedMax} ${unit}`;
-};
-
-const AUTO_DIFFICULTY_LEVELS = [
-  { tag: 'family friendly', maxHikingMiles: 4, maxBikingMiles: 5, maxElevation: 1500 },
-  { tag: 'chill', maxHikingMiles: 7, maxBikingMiles: 10, maxElevation: 3000 },
-  { tag: 'standard', maxHikingMiles: 10, maxBikingMiles: 35, maxElevation: 4000 },
-  { tag: 'demanding', maxHikingMiles: 15, maxBikingMiles: 70, maxElevation: 6000 },
-  { tag: 'extremely challenging', maxHikingMiles: Number.POSITIVE_INFINITY, maxBikingMiles: Number.POSITIVE_INFINITY, maxElevation: Number.POSITIVE_INFINITY },
-];
-
-const getAutomaticDifficultyTag = (days: TripDay[]) => {
-  const plannedDayStats = days.flatMap(day => {
-    const activityStats = new Map<string, { miles: number; elevationGain: number }>();
-    (day.activities || []).forEach(activity => {
-      const activityType = activity.type.trim().toLowerCase() === 'biking' ? 'biking' : 'hiking';
-      const stats = activityStats.get(activityType) || { miles: 0, elevationGain: 0 };
-      stats.miles += parseTripNumber(activity.miles);
-      stats.elevationGain += parseTripNumber(activity.elevationGain);
-      activityStats.set(activityType, stats);
-    });
-    return Array.from(activityStats, ([activityType, stats]) => ({ activityType, ...stats }));
-  }).filter(stats => stats.miles > 0 || stats.elevationGain > 0);
-
-  if (plannedDayStats.length === 0) return null;
-
-  const hardestLevelIndex = plannedDayStats.reduce((hardestIndex, stats) => {
-    const levelIndex = AUTO_DIFFICULTY_LEVELS.findIndex(level =>
-      (stats.activityType === 'biking'
-        ? stats.miles <= level.maxBikingMiles
-        : stats.miles < level.maxHikingMiles)
-      && stats.elevationGain < level.maxElevation
-    );
-    return Math.max(hardestIndex, levelIndex < 0 ? AUTO_DIFFICULTY_LEVELS.length - 1 : levelIndex);
-  }, 0);
-
-  return AUTO_DIFFICULTY_LEVELS[hardestLevelIndex].tag;
-};
-
-const updateAutomaticDifficultyTag = (trip: Trip, days: TripDay[]): Trip => {
-  const difficultyTags = new Set(AUTO_DIFFICULTY_LEVELS.map(level => level.tag));
-  const otherTags = (trip.tags || []).filter(tag => !difficultyTags.has(tag.trim().toLowerCase()));
-  const difficultyTag = getAutomaticDifficultyTag(days);
-  return {
-    ...trip,
-    days,
-    tags: difficultyTag ? [...otherTags, difficultyTag] : otherTags,
-  };
-};
-
-
-const calculateTripStats = (trip: Trip) => {
-  const tripDays = trip.days || [];
-  const tripActivities = tripDays.flatMap(day => day.activities || []);
-  const mandatoryMileage = tripActivities
-    .filter(a => a.importance === 'mandatory')
-    .reduce((sum, a) => sum + parseTripNumber(a.miles), 0);
-  const totalMileage = tripActivities
-    .reduce((sum, a) => sum + parseTripNumber(a.miles), 0);
-  
-  const mandatoryElevationGain = tripActivities
-    .filter(a => a.importance === 'mandatory')
-    .reduce((sum, a) => sum + parseTripNumber(a.elevationGain), 0);
-  const totalElevationGain = tripActivities
-    .reduce((sum, a) => sum + parseTripNumber(a.elevationGain), 0);
-    
-  return {
-    dayCount: tripDays.length,
-    mileageMin: mandatoryMileage,
-    mileageMax: totalMileage,
-    elevationMin: mandatoryElevationGain,
-    elevationMax: totalElevationGain,
-    mileageRange: formatTripRange(mandatoryMileage, totalMileage, 'mi'),
-    elevationRange: formatTripRange(mandatoryElevationGain, totalElevationGain, 'ft'),
-  };
-};
-
-const getTripDateRange = (startDate: string | undefined, dayCount: number) => {
-  if (!startDate) return 'No dates set';
-  const start = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(start);
-  end.setUTCDate(start.getUTCDate() + dayCount - 1);
-  return `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
-};
-
-// Convert any weight value to ounces for consistent summation
-const toOz = (weight: number | string | undefined, unit: string | undefined): number => {
-  const w = parseFloat(String(weight ?? ''));
-  if (!isFinite(w)) return 0;
-  switch ((unit || 'oz').toLowerCase()) {
-    case 'lb': return w * 16;
-    case 'kg': return w * 35.274;
-    case 'g':  return w * 0.035274;
-    default:   return w; // oz
-  }
-};
-
-// Format a weight in ounces to a human-readable string (auto-selects lb/oz)
-const formatWeight = (oz: number): string => {
-  if (oz === 0) return '0 oz';
-  if (oz >= 16) {
-    const lb = oz / 16;
-    return `${parseFloat(lb.toFixed(1))} lb`;
-  }
-  return `${parseFloat(oz.toFixed(1))} oz`;
-};
-
-// Render text with clickable links for any URLs
-const renderTextWithLinks = (text?: string) => {
-  if (!text) return null;
-  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/g;
-  const parts = text.split(urlRegex);
-
-  return parts.map((part, index) => {
-    if (part.match(/^https?:\/\/[^\s]+$/) || part.match(/^www\.[^\s]+$/)) {
-      const href = part.startsWith('www.') ? `https://${part}` : part;
-      return (
-        <a
-          key={index}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="description-link"
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {part}
-        </a>
-      );
-    }
-    return part;
-  });
-};
-
-interface PersonPackingStats {
-  personId: string;
-  packedCount: number;   // fully-packed + in-car
-  totalCount: number;    // all items not 'not-bringing'
-  packedPercent: number; // 0-100
-  plannedWeightOz: number; // total weight of non-'not-bringing' items
-  packedWeightOz: number; // fully-packed + in-car items
-  baseWeightOz: number;    // base weight
-  wornWeightOz: number;    // worn weight
-  foodWeightOz: number;    // food weight
-  packedBaseWeightOz: number;
-  packedWornWeightOz: number;
-  packedFoodWeightOz: number;
-  weightedItemCount: number;
-  packedWeightedItemCount: number;
-}
-
-// Compute packing stats per person, optionally scoped to one category
-const calcPersonPackingStats = (
-  trip: Trip,
-  categoryId?: string,
-  gearClosetItems: GearClosetItem[] = []
-): PersonPackingStats[] => {
-  const categories = categoryId
-    ? trip.categories.filter(c => c.id === categoryId)
-    : trip.categories;
-  const gearClosetById = new Map(gearClosetItems.map(item => [item.id, item]));
-
-  const totalWeightByPerson: Record<string, number> = {};
-  const packedWeightByPerson: Record<string, number> = {};
-  const baseWeightByPerson: Record<string, number> = {};
-  const wornWeightByPerson: Record<string, number> = {};
-  const foodWeightByPerson: Record<string, number> = {};
-  const packedBaseWeightByPerson: Record<string, number> = {};
-  const packedWornWeightByPerson: Record<string, number> = {};
-  const packedFoodWeightByPerson: Record<string, number> = {};
-  const packedCount: Record<string, number> = {};
-  const totalCount: Record<string, number> = {};
-  const weightedItemCount: Record<string, number> = {};
-  const packedWeightedItemCount: Record<string, number> = {};
-
-  for (const person of trip.people) {
-    totalWeightByPerson[person.id] = 0;
-    packedWeightByPerson[person.id] = 0;
-    baseWeightByPerson[person.id] = 0;
-    wornWeightByPerson[person.id] = 0;
-    foodWeightByPerson[person.id] = 0;
-    packedBaseWeightByPerson[person.id] = 0;
-    packedWornWeightByPerson[person.id] = 0;
-    packedFoodWeightByPerson[person.id] = 0;
-    packedCount[person.id] = 0;
-    totalCount[person.id] = 0;
-    weightedItemCount[person.id] = 0;
-    packedWeightedItemCount[person.id] = 0;
-  }
-
-  for (const cat of categories) {
-    for (const item of cat.items) {
-      for (const person of trip.people) {
-        const status = item.personStatuses[person.id] || 'not-packed';
-        if (status === 'not-bringing') continue;
-
-        totalCount[person.id]++;
-        if (status === 'fully-packed' || status === 'in-car') {
-          packedCount[person.id]++;
-        }
-
-        const personQty = typeof item.personQuantities?.[person.id] === 'number' && item.personQuantities[person.id] > 0
-          ? item.personQuantities[person.id]
-          : (typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1);
-
-        // Determine the weight for this person's item
-        const customGear = item.personGearItems?.[person.id];
-        const linkedGear = gearClosetById.get(customGear?.gearClosetItemId || item.gearClosetItemId || '');
-        const w = customGear?.weight ?? linkedGear?.weight ?? item.weight;
-        const u = customGear?.weightUnit ?? linkedGear?.weightUnit ?? item.weightUnit;
-        const itemWeightOz = toOz(w, u) * personQty;
-        const hasWeight = w !== undefined && w !== null && w !== '' && Number.isFinite(parseFloat(String(w)));
-
-        // Weight category (worn, food, or base)
-        const weightType = customGear?.weightType;
-
-        // If someone else is carrying this item for this person,
-        // add the weight to the carrier instead of the owner.
-        const carrierId = item.personCarriedBy?.[person.id];
-        const targetPersonId =
-          carrierId && carrierId !== person.id && totalWeightByPerson[carrierId] !== undefined
-            ? carrierId
-            : person.id;
-
-        totalWeightByPerson[targetPersonId] += itemWeightOz;
-        if (hasWeight) weightedItemCount[targetPersonId]++;
-        if (status === 'fully-packed' || status === 'in-car') {
-          packedWeightByPerson[targetPersonId] += itemWeightOz;
-          if (hasWeight) packedWeightedItemCount[targetPersonId]++;
-          if (weightType === 'worn') {
-            packedWornWeightByPerson[targetPersonId] += itemWeightOz;
-          } else if (weightType === 'food') {
-            packedFoodWeightByPerson[targetPersonId] += itemWeightOz;
-          } else {
-            packedBaseWeightByPerson[targetPersonId] += itemWeightOz;
-          }
-        }
-        if (weightType === 'worn') {
-          wornWeightByPerson[targetPersonId] += itemWeightOz;
-        } else if (weightType === 'food') {
-          foodWeightByPerson[targetPersonId] += itemWeightOz;
-        } else {
-          baseWeightByPerson[targetPersonId] += itemWeightOz;
-        }
-      }
-    }
-  }
-
-  return trip.people.map(person => ({
-    personId: person.id,
-    packedCount: packedCount[person.id] ?? 0,
-    totalCount: totalCount[person.id] ?? 0,
-    packedPercent:
-      (totalCount[person.id] ?? 0) > 0
-        ? Math.round(((packedCount[person.id] ?? 0) / (totalCount[person.id] ?? 0)) * 100)
-        : 0,
-    plannedWeightOz: totalWeightByPerson[person.id] ?? 0,
-    packedWeightOz: packedWeightByPerson[person.id] ?? 0,
-    baseWeightOz: baseWeightByPerson[person.id] ?? 0,
-    wornWeightOz: wornWeightByPerson[person.id] ?? 0,
-    foodWeightOz: foodWeightByPerson[person.id] ?? 0,
-    packedBaseWeightOz: packedBaseWeightByPerson[person.id] ?? 0,
-    packedWornWeightOz: packedWornWeightByPerson[person.id] ?? 0,
-    packedFoodWeightOz: packedFoodWeightByPerson[person.id] ?? 0,
-    weightedItemCount: weightedItemCount[person.id] ?? 0,
-    packedWeightedItemCount: packedWeightedItemCount[person.id] ?? 0,
-  }));
-};
-
-
-const getTripActivitySummary = (trip: Trip) => {
-  const activities = (trip.days || []).flatMap(day => day.activities || []);
-  const types = Array.from(new Set(activities.map(a => a.type)));
-  return types.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join('/');
-};
-
-const weatherCodeEmoji = (code: number | undefined): string => {
-  if (code === undefined || code === null) return '—';
-  if (code === 0) return '☀️';
-  if (code === 1) return '🌤️';
-  if (code === 2) return '⛅';
-  if (code === 3) return '☁️';
-  if (code === 45 || code === 48) return '🌫️';
-  if (code >= 51 && code <= 57) return '🌦️';
-  if (code >= 61 && code <= 67) return '🌧️';
-  if (code >= 71 && code <= 77) return '❄️';
-  if (code >= 80 && code <= 82) return '🌦️';
-  if (code === 85 || code === 86) return '🌨️';
-  if (code >= 95) return '⛈️';
-  return '🌡️';
-};
-
-const likelihoodClass = (pct: number): string => {
-  if (pct >= 80) return 'good';
-  if (pct >= 50) return 'mild';
-  return 'bad';
-};
-
-const getAqiCategory = (aqi: number | undefined | null): string => {
-  if (aqi == null) return 'unknown';
-  if (aqi <= 50) return 'good';
-  if (aqi <= 100) return 'moderate';
-  if (aqi <= 150) return 'usg';
-  if (aqi <= 200) return 'unhealthy';
-  if (aqi <= 300) return 'very-unhealthy';
-  return 'hazardous';
-};
-
-const formatForecastStartLabel = (startDate: string): string => {
-  // The forecast startDate strings are generated in UTC. Compute weekday using UTC
-  // to avoid client timezone offsets causing off-by-one day labels.
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const toUtcMidnight = (s: string) => new Date(`${s}T00:00:00Z`);
-  try {
-    const targetUtc = toUtcMidnight(startDate);
-    const todayUtc = toUtcMidnight(getTodayString());
-    const diffDays = Math.round((targetUtc.getTime() - todayUtc.getTime()) / msPerDay);
-    if (diffDays <= 0) return 'Today';
-    return targetUtc.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' });
-  } catch {
-    return startDate;
-  }
-};
-
-const WeatherDayCard = ({
-  row,
-  day,
-  editable = false,
-  onNotesChange,
-  onLinksChange,
-}: {
-  row: WeatherRow;
-  day?: TripDay;
-  editable?: boolean;
-  onNotesChange?: (value: string) => void;
-  onLinksChange?: (value: string) => void;
-}) => (
-  <div className="weather-card">
-    <div className="weather-card-header">
-      <div className="weather-card-title">
-        <h3>Day {row.dayIndex + 1} - {row.date}</h3>
-        <p className="weather-location">{row.location || 'Missing location'}</p>
-        {row.summary === 'Forecast unavailable for this date' || row.summary === 'Weather service unavailable' ? (
-          <p className="weather-unavailable-message">Forecast not available yet for this trip date.</p>
-        ) : (
-          <>
-            <p className="weather-summary">{row.summary}</p>
-            {typeof row.aqi === 'number' && (
-              <div className={`weather-aqi aqi-${getAqiCategory(row.aqi)}`}>
-                AQI {row.aqi}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-
-    <div className="weather-card-details">
-      <div className="weather-detail-row">
-        <span className="detail-label">Sea Level:</span>
-        <span className="detail-value">{row.highLow[0]?.high} / {row.highLow[0]?.low}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">3,000ft:</span>
-        <span className="detail-value">{row.highLow[3000]?.high} / {row.highLow[3000]?.low}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">6,000ft:</span>
-        <span className="detail-value">{row.highLow[6000]?.high} / {row.highLow[6000]?.low}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">10,000ft:</span>
-        <span className="detail-value">{row.highLow[10000]?.high} / {row.highLow[10000]?.low}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Cloud Cover:</span>
-        <span className="detail-value">{row.cloudCover ?? '-'}%</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Wind:</span>
-        <span className="detail-value">{formatWind(row.wind)}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Wind Gust:</span>
-        <span className="detail-value">{formatWind(row.windGust)}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Visibility:</span>
-        <span className="detail-value">{formatVisibility(row.visibility)}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Humidity:</span>
-        <span className="detail-value">{row.humidity ?? '-'}%</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Freezing Level:</span>
-        <span className="detail-value">{formatElevation(row.freezingLevel)}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Snow Depth:</span>
-        <span className="detail-value">{formatSnow(row.snowDepth)}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Precipitation:</span>
-        <span className="detail-value">{formatPrecip(row.precipitation)}</span>
-      </div>
-      <div className="weather-detail-row">
-        <span className="detail-label">Snowfall:</span>
-        <span className="detail-value">{formatSnow(row.snowfall)}</span>
-      </div>
-    </div>
-
-    {editable && day && (
-      <>
-        <div className="weather-card-notes">
-          <label htmlFor={`notes-day-${row.dayIndex}`}>Notes</label>
-          <textarea
-            id={`notes-day-${row.dayIndex}`}
-            className="weather-notes-input"
-            placeholder="Add your own notes for this day..."
-            value={day.notes || ''}
-            onChange={(e) => onNotesChange?.(e.target.value)}
-          />
-        </div>
-
-        <div className="weather-card-links">
-          <label htmlFor={`weather-links-day-${row.dayIndex}`}>Additional Weather Sources</label>
-          <textarea
-            id={`weather-links-day-${row.dayIndex}`}
-            className="weather-links-input"
-            placeholder="Paste extra weather links here (one per line)"
-            value={day.weatherLinks || ''}
-            onChange={(e) => onLinksChange?.(e.target.value)}
-          />
-          <div className="weather-links-display">
-            {day.weatherLinks && day.weatherLinks
-              .split(/\n+/)
-              .map(link => link.trim())
-              .filter(Boolean)
-              .map(link => {
-                const isSafeProtocol = link.toLowerCase().startsWith('http://') || link.toLowerCase().startsWith('https://');
-                if (!isSafeProtocol) {
-                  return (
-                    <span key={link} className="weather-link invalid" title="Only http/https links are allowed">
-                      ⚠️ Invalid Link: {link.substring(0, 30)}...
-                    </span>
-                  );
-                }
-                return (
-                  <a key={link} href={link} target="_blank" rel="noreferrer" className="weather-link">
-                    {link}
-                  </a>
-                );
-              })}
-          </div>
-        </div>
-      </>
-    )}
-  </div>
-);
-
-interface TripDashboardFilters {
-  minMiles: string;
-  maxMiles: string;
-  minElevation: string;
-  maxElevation: string;
-  minDays: string;
-  maxDays: string;
-  tags: string;
-  difficultyTags: string[];
-  activityType: string;
-  strava: string;
-  debriefComment: string;
-}
-
-const createDefaultTripDashboardFilters = (): TripDashboardFilters => ({
-  minMiles: '',
-  maxMiles: '',
-  minElevation: '',
-  maxElevation: '',
-  minDays: '',
-  maxDays: '',
-  tags: '',
-  difficultyTags: [],
-  activityType: '',
-  strava: '',
-  debriefComment: '',
-});
-
-const TripDashboard = ({
-  trips,
-  filters,
-  onFiltersChange,
-  onViewTrip,
-  onNewTrip,
-  onRefreshAllWeather,
-  forecastData,
-  onOpenWeatherDetail,
-  onCopyTripLink,
-  templateCount,
-  onOpenTemplates,
-}: {
-  trips: Trip[];
-  filters: TripDashboardFilters;
-  onFiltersChange: (updater: (current: TripDashboardFilters) => TripDashboardFilters) => void;
-  onViewTrip: (id: string) => void;
-  onNewTrip: () => void;
-  onRefreshAllWeather: () => void;
-  forecastData: Record<string, StartingDayForecast[]>;
-  onOpenWeatherDetail: (trip: Trip, forecastDate: string) => void;
-  onCopyTripLink: (tripId: string) => void;
-  templateCount: number;
-  onOpenTemplates: () => void;
-}) => {
-  const hasActiveFilters = Object.values(filters).some(value =>
-    Array.isArray(value) ? value.length > 0 : value.trim() !== ''
-  );
-  const [filtersOpen, setFiltersOpen] = useState(hasActiveFilters);
-  const activityTypes = Array.from(new Set([
-    'hiking',
-    'ski-touring',
-    filters.activityType,
-    ...trips.flatMap(trip => (trip.days || []).flatMap(day => (day.activities || []).map(activity => activity.type.trim()))),
-  ].filter(Boolean))).sort((first, second) => first.localeCompare(second));
-  const filteredTrips = trips.filter(trip => {
-    const stats = calculateTripStats(trip);
-    const matchesRange = (rangeMin: number, rangeMax: number, minimum: string, maximum: string) => {
-      const selectedMin = minimum === '' ? Number.NEGATIVE_INFINITY : Number(minimum);
-      const selectedMax = maximum === '' ? Number.POSITIVE_INFINITY : Number(maximum);
-      return rangeMax >= selectedMin && rangeMin <= selectedMax;
-    };
-    const normalizedTagQuery = filters.tags.trim().toLowerCase();
-    const matchesTags = !normalizedTagQuery || (trip.tags || []).some(tag => tag.toLowerCase().includes(normalizedTagQuery));
-    const matchesDifficultyTags = filters.difficultyTags.length === 0
-      || filters.difficultyTags.some(selectedTag => (trip.tags || []).some(tag => tag.toLowerCase() === selectedTag));
-    const matchesActivityType = !filters.activityType
-      || (trip.days || []).some(day => (day.activities || []).some(activity => activity.type.toLowerCase() === filters.activityType.toLowerCase()));
-    const hasStravaPost = (trip.debriefStravaEmbeds || []).some(embed => embed.trim() !== '');
-    const hasDebriefComment = (trip.debriefDiscussions || []).some(discussion => parseDiscussionString(discussion).text.trim() !== '');
-    const matchesPresence = (filter: string, isPresent: boolean) => filter === '' || (filter === 'yes' ? isPresent : !isPresent);
-
-    return matchesRange(stats.mileageMin, stats.mileageMax, filters.minMiles, filters.maxMiles)
-      && matchesRange(stats.elevationMin, stats.elevationMax, filters.minElevation, filters.maxElevation)
-      && matchesRange(stats.dayCount, stats.dayCount, filters.minDays, filters.maxDays)
-      && matchesTags
-      && matchesDifficultyTags
-      && matchesActivityType
-      && matchesPresence(filters.strava, hasStravaPost)
-      && matchesPresence(filters.debriefComment, hasDebriefComment);
-  });
-
-  const updateFilter = (name: keyof typeof filters, value: string) => {
-    onFiltersChange(current => ({ ...current, [name]: value }));
-  };
-
-  const toggleDifficultyTag = (tag: string) => {
-    onFiltersChange(current => ({
-      ...current,
-      difficultyTags: current.difficultyTags.includes(tag)
-        ? current.difficultyTags.filter(selectedTag => selectedTag !== tag)
-        : [...current.difficultyTags, tag],
-    }));
-  };
-
-  return (
-  <div className="dashboard-container">
-    <header className="dashboard-header">
-      <h1>My Trips</h1>
-      <div className="dashboard-actions">
-        {trips.length > 0 && (
-          <button onClick={onRefreshAllWeather} className="refresh-weather-btn">🔄 Refresh Weather</button>
-        )}
-        <button onClick={onNewTrip} className="new-trip-btn">+ New Trip</button>
-      </div>
-    </header>
-    {trips.length === 0 ? (
-      <section className="first-run-empty" aria-labelledby="first-run-heading">
-        <div className="first-run-icon" aria-hidden="true">🏔️</div>
-        <h2 id="first-run-heading">Plan your first adventure</h2>
-        <p>
-          Create a trip to map out each day, check the weather window, and build a shared packing list
-          with everyone coming along.
-        </p>
-        <div className="first-run-actions">
-          <button type="button" className="new-trip-btn" onClick={onNewTrip}>+ Create your first trip</button>
-          {templateCount > 0 && (
-            <button type="button" className="refresh-weather-btn" onClick={onOpenTemplates}>
-              Start from a template ({templateCount})
-            </button>
-          )}
-        </div>
-        <ul className="first-run-steps">
-          <li><strong>Plan the days</strong><span>Add locations, mileage and elevation for each day.</span></li>
-          <li><strong>Watch the weather</strong><span>See which start dates in the next week look best.</span></li>
-          <li><strong>Pack together</strong><span>Track who has packed what, and who carries the group gear.</span></li>
-        </ul>
-      </section>
-    ) : (<>
-    <section className={`trip-filter-panel ${filtersOpen ? 'open' : 'collapsed'}`} aria-labelledby="trip-filter-heading">
-      <div className="trip-filter-header">
-        <h2 id="trip-filter-heading">
-          <button
-            type="button"
-            className="trip-filter-toggle"
-            aria-expanded={filtersOpen}
-            aria-controls="trip-filter-grid"
-            onClick={() => setFiltersOpen(open => !open)}
-          >
-            <span className="trip-filter-chevron" aria-hidden="true">{filtersOpen ? '▾' : '▸'}</span>
-            Filter trips
-            {hasActiveFilters && <span className="trip-filter-active-dot">Active</span>}
-          </button>
-        </h2>
-        <div className="trip-filter-actions">
-          <span role="status">{filteredTrips.length} of {trips.length} trips</span>
-          <button type="button" onClick={() => onFiltersChange(() => createDefaultTripDashboardFilters())} disabled={!hasActiveFilters}>
-            Clear filters
-          </button>
-        </div>
-      </div>
-      {filtersOpen && <div className="trip-filter-grid" id="trip-filter-grid">
-        <fieldset className="trip-filter-range">
-          <legend>Miles</legend>
-          <label>Min<input type="number" min="0" step="0.1" value={filters.minMiles} onChange={event => updateFilter('minMiles', event.target.value)} /></label>
-          <label>Max<input type="number" min="0" step="0.1" value={filters.maxMiles} onChange={event => updateFilter('maxMiles', event.target.value)} /></label>
-        </fieldset>
-        <fieldset className="trip-filter-range">
-          <legend>Elevation gain (ft)</legend>
-          <label>Min<input type="number" min="0" step="100" value={filters.minElevation} onChange={event => updateFilter('minElevation', event.target.value)} /></label>
-          <label>Max<input type="number" min="0" step="100" value={filters.maxElevation} onChange={event => updateFilter('maxElevation', event.target.value)} /></label>
-        </fieldset>
-        <fieldset className="trip-filter-range">
-          <legend>Days</legend>
-          <label>Min<input type="number" min="0" step="1" value={filters.minDays} onChange={event => updateFilter('minDays', event.target.value)} /></label>
-          <label>Max<input type="number" min="0" step="1" value={filters.maxDays} onChange={event => updateFilter('maxDays', event.target.value)} /></label>
-        </fieldset>
-        <label className="trip-filter-search">
-          Search tags
-          <input type="search" placeholder="Search tags" value={filters.tags} onChange={event => updateFilter('tags', event.target.value)} />
-        </label>
-        <fieldset className="trip-filter-tags">
-          <legend>Difficulty tags</legend>
-          {AUTO_DIFFICULTY_LEVELS.map(({ tag }) => (
-            <label key={tag}>
-              <input
-                type="checkbox"
-                checked={filters.difficultyTags.includes(tag)}
-                onChange={() => toggleDifficultyTag(tag)}
-              />
-              {tag}
-            </label>
-          ))}
-        </fieldset>
-        <label className="trip-filter-select">
-          Activity type
-          <select value={filters.activityType} onChange={event => updateFilter('activityType', event.target.value)}>
-            <option value="">Any activity</option>
-            {activityTypes.map(activityType => (
-              <option key={activityType} value={activityType}>
-                {activityType.split(/[-_\s]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="trip-filter-select">
-          Strava post
-          <select value={filters.strava} onChange={event => updateFilter('strava', event.target.value)}>
-            <option value="">Any</option>
-            <option value="yes">Has post</option>
-            <option value="no">No post</option>
-          </select>
-        </label>
-        <label className="trip-filter-select">
-          Debrief comment
-          <select value={filters.debriefComment} onChange={event => updateFilter('debriefComment', event.target.value)}>
-            <option value="">Any</option>
-            <option value="yes">Has comment</option>
-            <option value="no">No comment</option>
-          </select>
-        </label>
-      </div>}
-    </section>
-    <div className="trip-list">
-      {filteredTrips.length === 0 ? (
-        <div className="trip-filter-empty" role="status">
-          No trips match these filters.
-        </div>
-      ) : filteredTrips.map((trip) => {
-        const stats = calculateTripStats(trip);
-        const weatherStatus = trip.weatherStatus || 'Pending';
-        let statusColor = '#9ca3af';
-        if (weatherStatus === 'Good') statusColor = '#22c55e';
-        else if (weatherStatus === 'Mild') statusColor = '#f59e0b';
-        else if (weatherStatus === 'Bad') statusColor = '#ef4444';
-        else if (weatherStatus === 'Too Far in the Future') statusColor = '#6366f1';
-        const forecasts = forecastData[trip.id] || [];
-        const tripDayCount = trip.days?.length ?? 0;
-        return (
-          <div key={trip.id} className="trip-card" onClick={() => onViewTrip(trip.id)}>
-            <div className="trip-card-main">
-              <div className="trip-card-overview">
-                <div className="trip-card-header">
-                  <h2>{trip.name}</h2>
-                  <button
-                    type="button"
-                    className="trip-card-copy-btn"
-                    title="Copy direct link to this trip"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCopyTripLink(trip.id);
-                    }}
-                  >
-                    🔗 Copy Link
-                  </button>
-                </div>
-                <div className="trip-card-badges">
-                          <span className="weather-status-badge" style={{ background: statusColor }}>
-                            {weatherStatus}
-                          </span>
-                          {trip.weatherData && Object.values(trip.weatherData).length > 0 && (() => {
-                            const aqiValues = Object.values(trip.weatherData).map((r: any) => r.aqi).filter((v: any) => typeof v === 'number') as number[];
-                            if (aqiValues.length === 0) return null;
-                            const maxAqi = Math.max(...aqiValues);
-                            const aqiClass = `aqi-${getAqiCategory(maxAqi)}`;
-                            return (<span className={`trip-aqi-badge ${aqiClass}`}>AQI {maxAqi}</span>);
-                          })()}
-                </div>
-                <div className="trip-card-meta">
-                  <span>📅 {getTripDateRange(trip.startDate, stats.dayCount)}</span>
-                  <span>🏔️ {getTripActivitySummary(trip)}</span>
-                </div>
-                <div className="trip-card-stats">
-                  <span>{stats.mileageRange}</span>
-                  <span>{stats.elevationRange}</span>
-                </div>
-                {(trip.tags || []).length > 0 && (
-                  <div className="trip-card-tags" aria-label="Trip tags">
-                    {trip.tags?.map(tag => <span className="trip-card-tag" key={tag}>{tag}</span>)}
-                  </div>
-                )}
-              </div>
-              <div className="forecast-section" onClick={(e) => e.stopPropagation()}>
-                <div className="forecast-section-label">Weather window for the next 7 days</div>
-                {forecasts.length > 0 ? (
-                  <div className="forecast-grid">
-                    {forecasts.map((fd) => {
-                      const goodDays = fd.totalDays - fd.stormyCount;
-                      const aqiValues = fd.days.map(d => d.aqi).filter((aqi): aqi is number => typeof aqi === 'number');
-                      const maxAqi = aqiValues.length > 0 ? Math.max(...aqiValues) : null;
-                      const dayDetails = fd.days.map((d, idx) => `Day ${idx + 1}: ${d.summary}${d.aqi ? ' • AQI ' + d.aqi : ''}`).join('\n');
-                      return (
-                        <div
-                          key={fd.startDate}
-                          className={`forecast-card likelihood-${likelihoodClass(fd.likelihood)}`}
-                          role="button"
-                          tabIndex={0}
-                          title={`Starting ${fd.startDate}: ${goodDays}/${tripDayCount} good days\n${dayDetails}\nClick for full details`}
-                          aria-label={`Starting ${formatForecastStartLabel(fd.startDate)}: ${fd.likelihood}% chance of good weather, ${goodDays} of ${tripDayCount} good days`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenWeatherDetail(trip, fd.startDate);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              onOpenWeatherDetail(trip, fd.startDate);
-                            }
-                          }}
-                        >
-                          <div className="forecast-date">{formatForecastStartLabel(fd.startDate)}</div>
-                          <div className="forecast-days-icons" aria-hidden="true">
-                            {fd.days.map((d, idx) => (
-                              <span key={idx} className="forecast-day-icon">{weatherCodeEmoji(d.weatherCode)}</span>
-                            ))}
-                          </div>
-                          <div className="forecast-likelihood-pct">{fd.likelihood}%</div>
-                          {maxAqi !== null && maxAqi > 50 && (
-                            <span className={`forecast-aqi aqi-${getAqiCategory(maxAqi)}`}>AQI {maxAqi}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="forecast-empty-state">Loading weather windows…</div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-    </>)}
-  </div>
-  );
-};
-
-const TemplatesView = ({
-  templates,
-  userId,
-  onUseTemplate,
-  onDeleteTemplate,
-}: {
-  templates: Trip[];
-  userId: string;
-  onUseTemplate: (template: Trip) => void;
-  onDeleteTemplate: (template: Trip) => void;
-}) => (
-  <main className="dashboard-container">
-    <header className="dashboard-header">
-      <h1>Templates</h1>
-    </header>
-    {templates.length === 0 ? (
-      <div className="trip-filter-empty">
-        <h2>No templates yet</h2>
-        <p>Open a trip and choose More → Save as Template to add a reusable starting point.</p>
-      </div>
-    ) : (
-      <div className="template-list">
-        {templates.map(template => {
-          const stats = calculateTripStats(template);
-          return (
-            <article className="template-card" key={template.id}>
-              <div className="template-card-content">
-                <h2>{template.name}</h2>
-                <p>{stats.dayCount} days <span aria-hidden="true">·</span> {stats.mileageRange} <span aria-hidden="true">·</span> {stats.elevationRange}</p>
-                {(template.tags || []).length > 0 && (
-                  <div className="trip-card-tags" aria-label="Template tags">
-                    {template.tags?.map(tag => <span className="trip-card-tag" key={tag}>{tag}</span>)}
-                  </div>
-                )}
-              </div>
-              <div className="template-card-actions">
-                <button type="button" className="new-trip-btn" onClick={() => onUseTemplate(template)}>Use Template</button>
-                {template.userId === userId && (
-                  <button type="button" className="danger" onClick={() => onDeleteTemplate(template)}>Delete</button>
-                )}
-              </div>
-            </article>
-          );
-        })}
-      </div>
-    )}
-  </main>
-);
+import { GlobalNav } from './GlobalNav';
+import LocationMapPicker from './LocationMapPicker';
+import { NotPackedTab } from './NotPackedTab';
+import { PackingListTab } from './PackingListTab';
+import { PrintAllTabs } from './PrintAllTabs';
+import { ShareModal } from './ShareModal';
+import { TemplatesView } from './TemplatesView';
+import { TripDashboard } from './TripDashboard';
+import { TripHeader } from './TripHeader';
+import { TripTab } from './TripTab';
+import { TripTabsNav } from './TripTabsNav';
+import { WeatherDayCard } from './WeatherDayCard';
+import { WeatherTab } from './WeatherTab';
+import { DEFAULT_STATUSES, INITIAL_CATEGORIES, SAMPLE_GEAR_CLOSET_ITEMS } from './constants';
+import { alertDialog, confirmDialog, promptDialog } from './dialogs';
+import { getSpeechRecognition, type SpeechRecognitionLike } from './speech';
+import { supabase } from './supabaseClient';
+import type { AppView } from './tripUtils';
+import { STORAGE_KEYS, calcPersonPackingStats, calculateTripStats, clearTripParamsFromUrl, createDefaultTripDashboardFilters, formatDiscussionString, formatWeight, generateId, getCurrentUsername, getStoredViewState, getTripIdFromUrl, getTripUrl, normalizeTripCategories, normalizeVoiceItemName, parseDiscussionString, parseStravaEmbeds, parseTripNumber, parseVoicePackingUpdate, updateAutomaticDifficultyTag } from './tripUtils';
+import type { GearClosetItem, StatusId, Trip, TripActivity, TripDay } from './types';
+import type { StartingDayForecast, WeatherRow } from './weatherUtils';
+import { fetchTripDashboardForecast, fetchWeatherForDay, getDayDate, getTodayString, isStormyWeatherCode } from './weatherUtils';
+import './App.css';
+import { Analytics } from "@vercel/analytics/react";
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -1053,7 +43,7 @@ function App() {
     const fromUrl = getTripIdFromUrl();
     const fromSession = window.sessionStorage.getItem('pending_trip_link');
     if (fromSession) {
-      try { window.sessionStorage.removeItem('pending_trip_link'); } catch {}
+      try { window.sessionStorage.removeItem('pending_trip_link'); } catch { /* storage unavailable */ }
     }
     return fromUrl || fromSession;
   });
@@ -1076,7 +66,7 @@ function App() {
   const [askQuestion, setAskQuestion] = useState('');
   const [askAnswer, setAskAnswer] = useState('');
   const [isAsking, setIsAsking] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const tripMenuRef = useRef<HTMLDetailsElement>(null);
   const closeTripMenu = () => {
     if (tripMenuRef.current) tripMenuRef.current.open = false;
@@ -1203,6 +193,7 @@ function App() {
     } catch {
       // Ignore storage errors so the app can keep working.
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- isInitialLoad is read only as a guard; re-running on it would push a duplicate history entry
   }, [view, currentTripId, activeTab, historyInitialized]);
 
   useEffect(() => {
@@ -1255,16 +246,18 @@ function App() {
     };
     window.history.replaceState(initialState, document.title, `${initialUrl.pathname}${initialUrl.search}${initialUrl.hash}`);
     window.addEventListener('popstate', handlePopState);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- marks history ready after the popstate listener is attached
     setHistoryInitialized(true);
 
     // Clean up speech recognition on unmount
     return () => {
       window.removeEventListener('popstate', handlePopState);
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch {};
+        try { recognitionRef.current.stop(); } catch { /* already stopped */ }
         recognitionRef.current = null;
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only setup of history and the popstate listener
   }, []);
 
   // Handle Auth Session
@@ -1292,6 +285,7 @@ function App() {
   // Load trips from Supabase when user is set
   useEffect(() => {
     if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears trips when the user signs out
       setTrips([]);
       if (!initialTargetTripIdRef.current) {
         setCurrentTripId(null);
@@ -1330,7 +324,7 @@ function App() {
         const targetTripId = initialTargetTripIdRef.current || getTripIdFromUrl() || (typeof window !== 'undefined' ? sessionStorage.getItem('pending_trip_link') : null);
         console.log('loadTrips targetTripId:', targetTripId);
         if (typeof window !== 'undefined' && sessionStorage.getItem('pending_trip_link')) {
-          try { sessionStorage.removeItem('pending_trip_link'); } catch {}
+          try { sessionStorage.removeItem('pending_trip_link'); } catch { /* storage unavailable */ }
         }
 
         const { data, error } = await supabase
@@ -1455,15 +449,16 @@ function App() {
             setActiveTab('trip');
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Failed to load trips from Supabase:', err);
-        setLoadError(err.message || 'Unknown database error');
+        setLoadError((err instanceof Error && err.message) || (typeof err === 'object' && err && 'message' in err && String(err.message)) || 'Unknown database error');
       } finally {
         setIsInitialLoad(false);
       }
     };
 
     loadTrips();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload trips only when the signed-in user changes
   }, [user]);
 
   // Save trips to Supabase (debounced)
@@ -1507,6 +502,7 @@ function App() {
   // Load gear closet from Supabase when user is set
   useEffect(() => {
     if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the gear closet when the user signs out
       setGearCloset([]);
       return;
     }
@@ -1598,6 +594,7 @@ function App() {
       ...item,
       id: generateId(),
       userId: user?.id,
+      // eslint-disable-next-line react-hooks/purity -- runs in an event handler, not during render
       lastModified: Date.now(),
     };
     setGearCloset(prev => [...prev, newItem]);
@@ -1668,7 +665,7 @@ function App() {
                           name: gearItem.name,
                           description: gearItem.description,
                           weight: gearItem.weight,
-                          weightUnit: gearItem.weightUnit as any,
+                          weightUnit: gearItem.weightUnit,
                           gearClosetItemId: gearItem.id,
                         }
                       }
@@ -1806,68 +803,6 @@ function App() {
     }));
   };
 
-  const normalizeTripCategories = (trip: Trip): Trip => {
-    const rawCategories = trip.categories || [];
-    let groupGearItems: Item[] = [];
-
-    // Migrate any legacy 'Group Gear' category items into Basic Gear, then remove the tab
-    const filteredCategories = rawCategories.filter(cat => {
-      if (cat.name === 'Group Gear' || cat.name === GROUP_GEAR_CATEGORY_NAME) {
-        if (cat.items && cat.items.length > 0) {
-          groupGearItems = [
-            ...groupGearItems,
-            ...cat.items.map(it => ({
-              ...it,
-              isGroupGear: true,
-              personStatuses: it.personStatuses || {},
-            })),
-          ];
-        }
-        return false;
-      }
-      return true;
-    });
-
-    let finalCategories: Category[] = filteredCategories.map(cat => ({
-      id: cat.id,
-      name: cat.name,
-      isPermanent: false,
-      items: (cat.items || []).map(item => ({
-        ...item,
-        personStatuses: item.personStatuses || {},
-      })),
-    }));
-
-    if (groupGearItems.length > 0) {
-      const basicGearCat = finalCategories.find(c => c.name.toLowerCase() === 'basic gear');
-      if (basicGearCat) {
-        basicGearCat.items = [...basicGearCat.items, ...groupGearItems];
-      } else if (finalCategories.length > 0) {
-        finalCategories[0].items = [...finalCategories[0].items, ...groupGearItems];
-      } else {
-        finalCategories.push({
-          id: generateId(),
-          name: 'Basic Gear',
-          items: groupGearItems,
-          isPermanent: false,
-        });
-      }
-    }
-
-    if (finalCategories.length === 0) {
-      finalCategories = INITIAL_CATEGORIES.map(cat => ({
-        id: generateId(),
-        name: cat,
-        items: [],
-        isPermanent: false,
-      }));
-    }
-
-    return {
-      ...trip,
-      categories: finalCategories,
-    };
-  };
 
   const createNewTrip = (name: string, userId = user?.id) => {
     if (!userId) return;
@@ -2407,51 +1342,14 @@ function App() {
 
   useEffect(() => {
     if (currentTrip) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the CalTopo input when the trip link changes
       setCaltopoLinkInput(currentTrip.caltopoUrl || '');
       setCaltopoUrlError(null);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- sync only when the saved CalTopo link changes
   }, [currentTrip?.caltopoUrl]);
 
 
-  const fetchWeather = async () => {
-    if (!currentTrip) return;
-    const isCacheValid = currentTrip.lastWeatherUpdate && (Date.now() - currentTrip.lastWeatherUpdate < 3600000);
-
-    if (isCacheValid && currentTrip.weatherData && Object.keys(currentTrip.weatherData).length > 0) {
-      setWeatherRows(Object.values(currentTrip.weatherData).sort((a, b) => a.dayIndex - b.dayIndex));
-      setWeatherError(null);
-      return;
-    }
-
-    if (!currentTrip.startDate) {
-      setWeatherRows([]);
-      setWeatherError('Please set a Trip start date first.');
-      return;
-    }
-    if (!currentTrip.days || currentTrip.days.length === 0) {
-      setWeatherRows([]);
-      setWeatherError('Add at least one trip day with a location to view weather.');
-      return;
-    }
-
-    const refreshedTrips = await refreshAllWeather(true);
-    const refreshedTrip = refreshedTrips.find(trip => trip.id === currentTrip.id);
-    if (refreshedTrip?.weatherData) {
-      const rows = Object.values(refreshedTrip.weatherData).sort((a, b) => a.dayIndex - b.dayIndex);
-      const hasAvailableData = rows.some((row) => row.summary !== 'Forecast unavailable for this date' && row.summary !== 'Weather service unavailable');
-      setWeatherRows(rows);
-      setWeatherError(hasAvailableData ? null : 'Weather forecasts are not available yet for these trip dates.');
-    } else {
-      setWeatherRows([]);
-      setWeatherError('Weather could not be loaded for this trip.');
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab !== 'weather') return;
-    fetchWeather();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, currentTrip?.startDate, currentTrip?.days?.length, currentTrip?.days?.map(day => day.location).join('|'), currentTrip?.lastWeatherUpdate]);
 
   const openWeatherDetail = async (trip: Trip, forecastDate: string) => {
     const day = trip.days?.find((candidate) => candidate.location?.trim()) || trip.days?.[0];
@@ -2784,6 +1682,7 @@ function App() {
       lastWeatherUpdate: resetTripDetails ? undefined : sourceTrip.lastWeatherUpdate,
       userId: user?.id,
       sharedWith: resetTripDetails ? [] : [...(sourceTrip.sharedWith || [])],
+      // eslint-disable-next-line react-hooks/purity -- runs in an event handler, not during render
       lastModified: Date.now(),
     });
   };
@@ -3025,7 +1924,6 @@ function App() {
 
       const weatherData: Record<number, WeatherRow> = {};
       let stormyCount = 0;
-      let dayCount = 0;
 
       for (let i = 0; i < trip.days.length; i += 1) {
         const day = trip.days[i];
@@ -3040,17 +1938,16 @@ function App() {
 
           weatherData[i] = weather;
           if (weather.summary !== 'Forecast unavailable for this date' && weather.summary !== 'Weather service unavailable') {
-            dayCount++;
             if (isStormyWeatherCode(weather.weatherCode)) {
               stormyCount++;
             }
           }
-        } catch (err) {
+        } catch {
           return { ...trip, weatherStatus: 'Pending' as const, weatherData: {}, lastWeatherUpdate: Date.now() };
         }
       }
 
-      let status: 'Good' | 'Mild' | 'Bad' | 'Pending' | 'Too Far in the Future' = 'Good';
+      let status: 'Good' | 'Mild' | 'Bad' | 'Pending' | 'Too Far in the Future';
       const availableRows = Object.values(weatherData).filter((row) => row.summary !== 'Forecast unavailable for this date' && row.summary !== 'Weather service unavailable');
       if (availableRows.length === 0) {
         status = 'Too Far in the Future';
@@ -3102,6 +1999,48 @@ function App() {
     return updatedTrips;
   };
 
+  const fetchWeather = async () => {
+    if (!currentTrip) return;
+    // eslint-disable-next-line react-hooks/purity -- runs in an event handler, not during render
+    const isCacheValid = currentTrip.lastWeatherUpdate && (Date.now() - currentTrip.lastWeatherUpdate < 3600000);
+
+    if (isCacheValid && currentTrip.weatherData && Object.keys(currentTrip.weatherData).length > 0) {
+      setWeatherRows(Object.values(currentTrip.weatherData).sort((a, b) => a.dayIndex - b.dayIndex));
+      setWeatherError(null);
+      return;
+    }
+
+    if (!currentTrip.startDate) {
+      setWeatherRows([]);
+      setWeatherError('Please set a Trip start date first.');
+      return;
+    }
+    if (!currentTrip.days || currentTrip.days.length === 0) {
+      setWeatherRows([]);
+      setWeatherError('Add at least one trip day with a location to view weather.');
+      return;
+    }
+
+    const refreshedTrips = await refreshAllWeather(true);
+    const refreshedTrip = refreshedTrips.find(trip => trip.id === currentTrip.id);
+    if (refreshedTrip?.weatherData) {
+      const rows = Object.values(refreshedTrip.weatherData).sort((a, b) => a.dayIndex - b.dayIndex);
+      const hasAvailableData = rows.some((row) => row.summary !== 'Forecast unavailable for this date' && row.summary !== 'Weather service unavailable');
+      setWeatherRows(rows);
+      setWeatherError(hasAvailableData ? null : 'Weather forecasts are not available yet for these trip dates.');
+    } else {
+      setWeatherRows([]);
+      setWeatherError('Weather could not be loaded for this trip.');
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'weather') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetches weather when the weather tab opens
+    fetchWeather();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, currentTrip?.startDate, currentTrip?.days?.length, currentTrip?.days?.map(day => day.location).join('|'), currentTrip?.lastWeatherUpdate]);
+
   useEffect(() => {
     if (!user || isInitialLoad || view !== 'dashboard' || trips.length === 0) return;
     if (Object.keys(forecastData).length > 0) {
@@ -3109,7 +2048,9 @@ function App() {
       return;
     }
     console.log('Dashboard load: requesting forecast data for dashboard view.');
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetches dashboard forecasts once trips are loaded
     void refreshAllWeather(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshAllWeather is recreated every render; listing it would refetch in a loop
   }, [user, isInitialLoad, view, trips.length, forecastData]);
 
   if (isInitialLoad) {
@@ -3132,57 +2073,33 @@ function App() {
     return <AuthScreen />;
   }
 
-  // Global nav — shown on dashboard and gear-closet views
-  const GlobalNav = () => (
-    <nav className="global-app-nav">
-      <div className="nav-brand" onClick={navigateToDashboard}>
-        <span className="brand-logo">🏔️</span>
-        <span className="brand-name">Adventure Planner</span>
-      </div>
-      <div className="nav-links">
-        <button
-          type="button"
-          className={`nav-link-btn ${view === 'dashboard' && !accessDeniedTrip ? 'active' : ''}`}
-          onClick={navigateToDashboard}
-        >
-          🗺️ Trips
-        </button>
-        <button
-          type="button"
-          className={`nav-link-btn ${view === 'gear-closet' ? 'active' : ''}`}
-          onClick={() => {
-            setAccessDeniedTrip(null);
-            setView('gear-closet');
-          }}
-        >
-          📦 Gear Closet
-        </button>
-        <button
-          type="button"
-          className={`nav-link-btn ${view === 'templates' ? 'active' : ''}`}
-          onClick={() => {
-            setAccessDeniedTrip(null);
-            setCurrentTripId(null);
-            setView('templates');
-          }}
-        >
-          📋 Templates
-        </button>
-      </div>
-      <div className="nav-user-section">
-        <span className="user-email-text" title={user.email || ''}>
-          <span className="logged-in-label">Logged in as: </span>
-          <strong className="user-email-strong">{user.email}</strong>
-        </span>
-        <button onClick={() => supabase.auth.signOut()} className="logout-btn">Log Out</button>
-      </div>
-    </nav>
+  const openGearCloset = () => {
+    setAccessDeniedTrip(null);
+    setView('gear-closet');
+  };
+
+  const openTemplates = () => {
+    setAccessDeniedTrip(null);
+    setCurrentTripId(null);
+    setView('templates');
+  };
+
+  const globalNav = (
+    <GlobalNav
+      view={view}
+      isAccessDenied={Boolean(accessDeniedTrip)}
+      userEmail={user.email}
+      onOpenDashboard={navigateToDashboard}
+      onOpenGearCloset={openGearCloset}
+      onOpenTemplates={openTemplates}
+      onSignOut={() => supabase.auth.signOut()}
+    />
   );
 
   if (view === 'templates') {
     return (
       <>
-        <GlobalNav />
+        {globalNav}
         <TemplatesView
           templates={trips.filter(trip => trip.isTemplate)}
           userId={user.id}
@@ -3197,7 +2114,7 @@ function App() {
   if (view === 'gear-closet') {
     return (
       <>
-        <GlobalNav />
+        {globalNav}
         <GearClosetView
           items={gearCloset}
           onAddItem={addGearClosetItem}
@@ -3217,7 +2134,7 @@ function App() {
   if (view === 'dashboard') {
     return (
       <>
-        <GlobalNav />
+        {globalNav}
         <TripDashboard
           trips={trips.filter(trip => !trip.isTemplate)}
           filters={dashboardFilters}
@@ -3233,11 +2150,7 @@ function App() {
           onOpenWeatherDetail={openWeatherDetail}
           onCopyTripLink={handleCopyTripLink}
           templateCount={trips.filter(trip => trip.isTemplate).length}
-          onOpenTemplates={() => {
-            setAccessDeniedTrip(null);
-            setCurrentTripId(null);
-            setView('templates');
-          }}
+          onOpenTemplates={openTemplates}
         />
         {selectedWeatherDetail.isOpen && selectedWeatherDetail.row && (
           <div className="weather-detail-modal-backdrop" onClick={closeWeatherDetail}>
@@ -3263,7 +2176,7 @@ function App() {
   if (accessDeniedTrip) {
     return (
       <div className="access-denied-page">
-        <GlobalNav />
+        {globalNav}
         <div className="access-denied-container">
           <div className="access-denied-card">
             <div className="access-denied-icon">🔒</div>
@@ -3321,7 +2234,7 @@ function App() {
   if (!currentTrip) {
     return (
       <div className="access-denied-page">
-        <GlobalNav />
+        {globalNav}
         <div className="access-denied-container">
           <div className="access-denied-card">
             <div className="access-denied-icon">🧭</div>
@@ -3348,6 +2261,39 @@ function App() {
   const tripStats = calculateTripStats(currentTrip);
   const activeCategory = currentTrip.categories.find(c => c.id === activeTab);
 
+  const toggleVoiceQuestion = () => {
+    if (isListening) {
+      try { recognitionRef.current?.stop(); } catch { /* already stopped */ }
+      setIsListening(false);
+    } else {
+      const SpeechRecognition = getSpeechRecognition();
+      if (!SpeechRecognition) {
+        void alertDialog('Voice input is not supported in this browser.', 'Try Chrome or Safari, or type your question instead.');
+        return;
+      }
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } else {
+        const rec = new SpeechRecognition();
+        rec.lang = 'en-US';
+        rec.interimResults = false;
+        rec.maxAlternatives = 1;
+        rec.onresult = (ev) => {
+          const transcript = Array.from(ev.results).map(result => result[0].transcript).join(' ');
+          setLastTranscript(transcript);
+          setAskQuestion(transcript);
+          void askTripQuestion(transcript);
+        };
+        rec.onend = () => setIsListening(false);
+        rec.onerror = (e) => { console.error('Speech error', e); setIsListening(false); };
+        recognitionRef.current = rec;
+        rec.start();
+        setIsListening(true);
+      }
+    }
+  };
+
   const handlePrintAllTabs = () => {
     window.print();
   };
@@ -3370,1304 +2316,139 @@ function App() {
 
   return (
     <div className="app-container">
-      <GlobalNav />
-      <header className="trip-header">
-        <div className="trip-header-top">
-          <button onClick={navigateToDashboard} className="back-to-list-btn">← All Trips</button>
-          <select
-            className="trip-switcher"
-            aria-label="Switch trip"
-            value={currentTrip.id}
-            onChange={(e) => setCurrentTripId(e.target.value)}
-          >
-            {trips.filter(t => !t.isTemplate).map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="trip-info">
-          <div className="trip-title-block">
-            <div className="trip-title-wrapper">
-              <h1 
-                contentEditable 
-                suppressContentEditableWarning
-                onBlur={(e) => updateTripName(e.currentTarget.textContent || currentTrip.name)}
-                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                title="Click to rename"
-              >
-                {currentTrip.name}
-              </h1>
-              <span className="edit-hint" aria-hidden="true">✎</span>
-            </div>
-            <div className="trip-stats" aria-label="Trip stats">
-              <div className="trip-stat">
-                <span className="trip-stat-label">Days</span>
-                <strong>{tripStats.dayCount}</strong>
-              </div>
-              <div className="trip-stat">
-                <span className="trip-stat-label">Miles</span>
-                <strong>{tripStats.mileageRange}</strong>
-              </div>
-              <div className="trip-stat">
-                <span className="trip-stat-label">Elevation</span>
-                <strong>{tripStats.elevationRange}</strong>
-              </div>
-            </div>
-          </div>
-          <div className="trip-actions">
-            <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
-            <button
-              type="button"
-              onClick={() => handleCopyTripLink()}
-              className="copy-trip-link-btn"
-              title="Copy direct link to this trip"
-            >
-              {copiedTripLink ? '✓ Copied Link' : '🔗 Copy Link'}
-            </button>
-            <details className="trip-more-menu" ref={tripMenuRef}>
-              <summary aria-label="More trip actions">More ▾</summary>
-              <div className="trip-more-menu-list" onClick={closeTripMenu}>
-                <button onClick={async () => {
-                  const name = (await promptDialog({
-                    title: 'Create a new trip',
-                    label: 'Trip name',
-                    placeholder: 'e.g. Enchantments thru-hike',
-                    confirmLabel: 'Create Trip',
-                  }))?.trim();
-                  if (name) createNewTrip(name);
-                }}>Create New Trip</button>
-                <button onClick={copyTrip}>Copy Trip</button>
-                {user.id === currentTrip.userId && (
-                  <button onClick={saveCurrentTripAsTemplate}>Save as Template</button>
-                )}
-                <button onClick={handlePrintAllTabs}>Download All Tabs</button>
-                <button onClick={resetTrip}>Reset Items</button>
-                <hr />
-                {user.id === currentTrip.userId ? (
-                  <button onClick={deleteTrip} className="danger">Delete Trip</button>
-                ) : (
-                  <button onClick={leaveTrip} className="danger">Remove Trip</button>
-                )}
-              </div>
-            </details>
-          </div>
-        </div>
+      {globalNav}
+      <TripHeader
+        navigateToDashboard={navigateToDashboard}
+        currentTrip={currentTrip}
+        setCurrentTripId={setCurrentTripId}
+        trips={trips}
+        updateTripName={updateTripName}
+        tripStats={tripStats}
+        setIsShareModalOpen={setIsShareModalOpen}
+        handleCopyTripLink={handleCopyTripLink}
+        copiedTripLink={copiedTripLink}
+        tripMenuRef={tripMenuRef}
+        closeTripMenu={closeTripMenu}
+        createNewTrip={createNewTrip}
+        copyTrip={copyTrip}
+        user={user}
+        saveCurrentTripAsTemplate={saveCurrentTripAsTemplate}
+        handlePrintAllTabs={handlePrintAllTabs}
+        resetTrip={resetTrip}
+        deleteTrip={deleteTrip}
+        leaveTrip={leaveTrip}
+        setMyPackingPerson={setMyPackingPerson}
+        removePerson={removePerson}
+        addPerson={addPerson}
+        askTripQuestion={askTripQuestion}
+        askQuestion={askQuestion}
+        setAskQuestion={setAskQuestion}
+        isAsking={isAsking}
+        isListening={isListening}
+        toggleVoiceQuestion={toggleVoiceQuestion}
+        lastTranscript={lastTranscript}
+        askAnswer={askAnswer}
+      />
 
-        <div className="trip-header-bottom">
-          <div className="people-manager">
-            <h3>Packers</h3>
-            <label className="voice-identity">
-              <span>My packing row</span>
-              <select
-                aria-label="My packing row"
-                value={currentTrip.people.find(person => person.userId === user.id)?.id || ''}
-                onChange={event => setMyPackingPerson(event.target.value)}
-              >
-                <option value="">Not linked</option>
-                {currentTrip.people.map(person => (
-                  <option
-                    key={person.id}
-                    value={person.id}
-                    disabled={Boolean(person.userId && person.userId !== user.id)}
-                  >
-                    {person.name}{person.userId && person.userId !== user.id ? ' (linked)' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="people-list">
-              {currentTrip.people.map(p => (
-                <span key={p.id} className="person-tag">
-                  {p.name}
-                  <button
-                    className="remove-person-btn"
-                    onClick={() => removePerson(p.id)}
-                    title={`Remove ${p.name}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <button onClick={async () => {
-                const name = (await promptDialog({
-                  title: 'Add a packer',
-                  label: 'Name',
-                  placeholder: 'e.g. Sam',
-                  confirmLabel: 'Add',
-                }))?.trim();
-                if (name) addPerson(name);
-              }}>+ Add Person</button>
-            </div>
-          </div>
-          <div className="voice-controls">
-            <form className="ask-form" onSubmit={event => {
-              event.preventDefault();
-              void askTripQuestion(askQuestion);
-            }}>
-              <input
-                value={askQuestion}
-                onChange={event => setAskQuestion(event.target.value)}
-                placeholder="Ask about this trip"
-                aria-label="Question about this trip"
-                maxLength={500}
-              />
-              <button type="submit" className="voice-btn" disabled={isAsking || !askQuestion.trim()}>
-                {isAsking ? 'Thinking...' : 'Ask'}
-              </button>
-            </form>
-            <button
-              type="button"
-              className={`voice-btn ${isListening ? 'listening' : ''}`}
-              onClick={() => {
-                if (isListening) {
-                  try { recognitionRef.current?.stop(); } catch {};
-                  setIsListening(false);
-                } else {
-                  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-                  if (!SpeechRecognition) {
-                    void alertDialog('Voice input is not supported in this browser.', 'Try Chrome or Safari, or type your question instead.');
-                    return;
-                  }
-                  if (recognitionRef.current) {
-                    recognitionRef.current.start();
-                    setIsListening(true);
-                  } else {
-                    const rec = new SpeechRecognition();
-                    rec.lang = 'en-US';
-                    rec.interimResults = false;
-                    rec.maxAlternatives = 1;
-                    rec.onresult = (ev: any) => {
-                      const transcript = Array.from(ev.results).map((r: any) => r[0].transcript).join(' ');
-                      setLastTranscript(transcript);
-                      setAskQuestion(transcript);
-                      void askTripQuestion(transcript);
-                    };
-                    rec.onend = () => setIsListening(false);
-                    rec.onerror = (e: any) => { console.error('Speech error', e); setIsListening(false); };
-                    recognitionRef.current = rec;
-                    rec.start();
-                    setIsListening(true);
-                  }
-                }
-              }}
-              title="Ask a question about this trip by voice"
-            >
-              {isListening ? 'Stop voice' : 'Voice'}
-            </button>
-            <div className="ask-response" aria-live="polite">
-              {lastTranscript && <div className="voice-transcript">You asked: {lastTranscript}</div>}
-              {askAnswer && <div className="voice-answer">{askAnswer}</div>}
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <nav className="tabs">
-        <button 
-          className={activeTab === 'trip' ? 'active' : ''} 
-          onClick={() => setActiveTab('trip')}
-        >
-          Trip
-        </button>
-        <button 
-          className={activeTab === 'weather' ? 'active' : ''} 
-          onClick={() => setActiveTab('weather')}
-        >
-          Weather
-        </button>
-        <button 
-          className={activeTab === 'caltopo' ? 'active' : ''} 
-          onClick={() => setActiveTab('caltopo')}
-        >
-          Caltopo
-        </button>
-        <button 
-          className={activeTab === 'not-packed' ? 'active' : ''} 
-          onClick={() => setActiveTab('not-packed')}
-        >
-          Not Packed
-        </button>
-        <button 
-          className={activeTab === 'debrief' ? 'active' : ''} 
-          onClick={() => setActiveTab('debrief')}
-        >
-          Debrief
-        </button>
-        <span className="tabs-divider" aria-hidden="true" />
-        {currentTrip.categories.map(cat => (
-          <button 
-            key={cat.id} 
-            className={activeTab === cat.id ? 'active' : ''} 
-            onClick={() => setActiveTab(cat.id)}
-          >
-            {cat.name}
-          </button>
-        ))}
-        <button className="add-tab-btn" onClick={addCategory}>+ Add Tab</button>
-      </nav>
+      <TripTabsNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        currentTrip={currentTrip}
+        addCategory={addCategory}
+      />
 
       <main className="content">
         {activeTab === 'not-packed' ? (
-          <div className="not-packed-panel">
-            <div className="not-packed-header">
-              <div>
-                <h2>Not Packed</h2>
-                <p>Items still needing attention for each person.</p>
-              </div>
-            </div>
-            {notPackedItems.length === 0 ? (
-              <div className="weather-placeholder">
-                <h2>Everything packed</h2>
-                <p>All items are marked as packed or in the car.</p>
-              </div>
-            ) : (
-              <div className="matrix-wrapper">
-                <table className="packing-matrix not-packed-table">
-                  <thead>
-                    <tr>
-                      <th>Person</th>
-                      <th>Category</th>
-                      <th>Item</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {notPackedItems.map(({ person, category, item, status }) => (
-                      <tr key={`${person.id}-${category.id}-${item.id}`}>
-                        <td>{person.name}</td>
-                        <td>{category.name}</td>
-                        <td className="item-name">{item.name}</td>
-                        <td>
-                          <span className="not-packed-status-tag">
-                            {DEFAULT_STATUSES.find(s => s.id === status)?.label || status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <NotPackedTab
+            notPackedItems={notPackedItems}
+          />
         ) : activeTab === 'debrief' ? (
-          <div className="debrief-panel">
-            <div className="debrief-header">
-              <div>
-                <h2>Debrief</h2>
-                <p>Capture notes and discussion points from the trip.</p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={addStrava}>+ Add Strava</button>
-                <button onClick={addDiscussion}>+ Add Discussion</button>
-              </div>
-            </div>
-            
-            <div className="discussion-list">
-              {(currentTrip.debriefDiscussions || []).map((discussion, index) => {
-                const { author, text } = parseDiscussionString(discussion);
-                const canDelete = canDeleteDiscussion(user, currentTrip.userId, author);
-                return (
-                  <div key={`${currentTrip.id}-discussion-${index}`} className="discussion-card">
-                    <div className="discussion-card-header">
-                      <span className="discussion-author">{author}</span>
-                      {canDelete ? (
-                        <button
-                          className="delete-item-btn discussion-delete-btn"
-                          onClick={() => deleteDiscussion(index)}
-                          aria-label={`Delete discussion ${index + 1}`}
-                        >
-                          Delete
-                        </button>
-                      ) : null}
-                    </div>
-                    <textarea
-                      className="discussion-textarea"
-                      placeholder={`Discussion ${index + 1}`}
-                      value={text}
-                      onChange={(e) => updateDiscussion(index, e.target.value)}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="strava-embeds">
-                {(currentTrip.debriefStravaEmbeds || []).map((embed, index) => (
-                <div key={`${currentTrip.id}-strava-${index}`} className="strava-card">
-                  <HtmlEmbed html={embed} />
-                  <button
-                    className="delete-item-btn"
-                    onClick={() => removeStravaEmbed(index)}
-                    aria-label={`Remove Strava embed ${index + 1}`}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+          <DebriefTab
+            addStrava={addStrava}
+            addDiscussion={addDiscussion}
+            currentTrip={currentTrip}
+            user={user}
+            deleteDiscussion={deleteDiscussion}
+            updateDiscussion={updateDiscussion}
+            removeStravaEmbed={removeStravaEmbed}
+          />
         ) : activeTab === 'weather' ? (
-          <div className="weather-panel">
-            <div className="weather-header">
-              <div>
-                <h2>Trip Weather Forecast</h2>
-                <p>Using trip start date, day schedule, and day coordinates.</p>
-              </div>
-            </div>
-            {weatherError ? (
-              <div className="weather-placeholder">
-                <h2>Weather Lookup</h2>
-                <p>{weatherError}</p>
-              </div>
-            ) : weatherRows.length === 0 ? (
-              <div className="weather-placeholder">
-                <h2>No forecast data</h2>
-                <p>Set a trip start date and add days with coordinates in the Trip tab.</p>
-              </div>
-            ) : (
-              <div className="weather-cards-container">
-                {weatherRows.map(row => {
-                  const day = currentTrip.days?.[row.dayIndex];
-                  return (
-                    <WeatherDayCard
-                      key={row.dayIndex}
-                      row={row}
-                      day={day}
-                      editable
-                      onNotesChange={(value) => {
-                        updateCurrentTrip(trip => {
-                          const days = [...(trip.days || [])];
-                          days[row.dayIndex] = {
-                            ...days[row.dayIndex],
-                            notes: value
-                          };
-                          return { ...trip, days, lastModified: Date.now() };
-                        });
-                      }}
-                      onLinksChange={(value) => {
-                        updateCurrentTrip(trip => {
-                          const days = [...(trip.days || [])];
-                          days[row.dayIndex] = {
-                            ...days[row.dayIndex],
-                            weatherLinks: value
-                          };
-                          return { ...trip, days, lastModified: Date.now() };
-                        });
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <WeatherTab
+            weatherError={weatherError}
+            weatherRows={weatherRows}
+            currentTrip={currentTrip}
+            updateCurrentTrip={updateCurrentTrip}
+          />
         ) : activeTab === 'caltopo' ? (
-          <div className="caltopo-panel">
-            <div className="caltopo-input-row">
-              <div>
-                <label htmlFor="caltopo-url">Caltopo Link</label>
-              </div>
-              <input
-                id="caltopo-url"
-                type="url"
-                placeholder="Paste your Caltopo map URL"
-                value={caltopoLinkInput}
-                onChange={(e) => handleCaltopoLinkChange(e.target.value)}
-              />
-              {caltopoUrlError && (
-                <div className="input-error">{caltopoUrlError}</div>
-              )}
-            </div>
-            {currentTrip.caltopoUrl ? (
-              <div className="caltopo-map-embed">
-                <iframe
-                  title="Caltopo Map"
-                  src={currentTrip.caltopoUrl}
-                  loading="lazy"
-                  sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-                />
-              </div>
-            ) : (
-              <div className="weather-placeholder">
-                <h2>Caltopo Maps</h2>
-                <p>Paste your Caltopo map URL above and it will be saved with the trip.</p>
-              </div>
-            )}
-          </div>
+          <CaltopoTab
+            caltopoLinkInput={caltopoLinkInput}
+            handleCaltopoLinkChange={handleCaltopoLinkChange}
+            caltopoUrlError={caltopoUrlError}
+            currentTrip={currentTrip}
+          />
         ) : activeTab === 'trip' ? (
-          <div className="trip-panel">
-            <div className="trip-input-row">
-              <div>
-                <label htmlFor="trip-start-date">Trip Start Date</label>
-              </div>
-              <input
-                id="trip-start-date"
-                type="date"
-                value={currentTrip.startDate || ''}
-                onChange={(e) => updateStartDate(e.target.value)}
-              />
-            </div>
-            {currentTrip.people.length > 0 && (() => {
-              const packingStats = calcPersonPackingStats(currentTrip, undefined, gearCloset);
-              return (
-                <div className="trip-packing-status">
-                  <h3 className="packing-status-heading">Packed Status</h3>
-                  <div className="packing-status-grid">
-                    {packingStats.map(stats => {
-                      const person = currentTrip.people.find(p => p.id === stats.personId);
-                      if (!person) return null;
-                      return (
-                        <div key={stats.personId} className="packing-status-card">
-                          <div className="packing-status-person-row">
-                            <span className="packing-status-name">{person.name}</span>
-                            <span className="packing-status-meta">
-                              {stats.packedCount}/{stats.totalCount} items &middot; {formatWeight(stats.plannedWeightOz)}
-                            </span>
-                          </div>
-                          <div className="packing-progress-track">
-                            <div
-                              className="packing-progress-fill"
-                              style={{ width: `${stats.packedPercent}%` }}
-                              title={`${stats.packedPercent}% packed`}
-                            />
-                          </div>
-                          <div className="packing-progress-label">{stats.packedPercent}% packed</div>
-                          <div className="packing-status-weight-breakdown">
-                            <span title="Base Weight">🎒 Base: {formatWeight(stats.baseWeightOz)}</span>
-                            <span title="Worn Weight">👕 Worn: {formatWeight(stats.wornWeightOz)}</span>
-                            <span title="Food Weight">🍴 Food: {formatWeight(stats.foodWeightOz)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-            <section className="trip-tags" aria-labelledby="trip-tags-heading">
-              <h3 id="trip-tags-heading" className="packing-status-heading">Tags</h3>
-              <div className="trip-tags-content">
-                <div className="trip-tags-list">
-                  {(currentTrip.tags || []).map(tag => (
-                    <span className="trip-tag" key={tag}>
-                      {tag}
-                      <button
-                        type="button"
-                        className="remove-trip-tag-btn"
-                        aria-label={`Remove ${tag} tag`}
-                        onClick={() => removeTripTag(tag)}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <form
-                  className="trip-tags-form"
-                  onSubmit={event => {
-                    event.preventDefault();
-                    addTripTag();
-                  }}
-                >
-                  <input
-                    aria-label="New trip tag"
-                    placeholder="Add a tag"
-                    value={tripTagInput}
-                    onChange={event => setTripTagInput(event.target.value)}
-                  />
-                  <button type="submit" disabled={!tripTagInput.trim()}>Add</button>
-                </form>
-              </div>
-            </section>
-            <div className="trip-days">
-              <div className="trip-days-header">
-                <h2>Trip Days</h2>
-                <button onClick={addTripDay}>+ Add Day</button>
-              </div>
-              { (currentTrip.days || []).length === 0 ? (
-                <div className="weather-placeholder">
-                  <h2>No Days Added</h2>
-                  <p>Add days for your itinerary and enter a location for each day.</p>
-                </div>
-              ) : (
-                <div className="day-list">
-                  {(currentTrip.days || []).map((day, index) => (
-                    <div
-                      key={day.id}
-                      className={`day-summary-card ${draggedDayId === day.id ? 'dragging' : ''} ${dragOverDayId === day.id ? 'drag-over' : ''}`}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragOverDayId(day.id);
-                      }}
-                      onDragLeave={() => setDragOverDayId(null)}
-                      onDrop={() => {
-                        if (draggedDayId && draggedDayId !== day.id) {
-                          reorderTripDays(draggedDayId, day.id);
-                        }
-                        setDragOverDayId(null);
-                      }}
-                    >
-                      <div className="day-summary-header">
-                        <div className="day-title-badge">
-                          <span
-                            className="drag-handle"
-                            title="Drag to reorder"
-                            draggable
-                            onDragStart={(e) => {
-                              e.stopPropagation();
-                              setDraggedDayId(day.id);
-                            }}
-                            onDragEnd={(e) => {
-                              e.stopPropagation();
-                              setDraggedDayId(null);
-                            }}
-                          >
-                            ⋮⋮
-                          </span>
-                          <h3>Day {index + 1}</h3>
-                        </div>
-                        <div className="day-summary-actions">
-                          <button
-                            type="button"
-                            className="day-gear-btn"
-                            onClick={() => setEditingDayId(day.id)}
-                            title="Edit Day details"
-                          >
-                            ⚙️ Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="day-remove-btn"
-                            onClick={() => deleteTripDay(day.id)}
-                            title="Remove Day"
-                          >
-                            🗑️ Remove
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="day-summary-body">
-                        <div className="day-summary-location">
-                          <span className="location-icon">📍</span>
-                          <span className="location-text">
-                            {day.location ? renderTextWithLinks(day.location) : <em className="placeholder-text">No location specified</em>}
-                          </span>
-                        </div>
-
-                        {day.description && (
-                          <div className="day-summary-description">
-                            <p>{renderTextWithLinks(day.description)}</p>
-                          </div>
-                        )}
-
-                        <div className="day-summary-activities">
-                          <div className="day-summary-activities-title">
-                            Activities ({(day.activities || []).length})
-                          </div>
-                          {(!day.activities || day.activities.length === 0) ? (
-                            <p className="no-activities-text">No activities planned for this day.</p>
-                          ) : (
-                            <div className="day-summary-activities-grid">
-                              {day.activities.map((act) => (
-                                <div key={act.id} className="activity-summary-card">
-                                  <div className="activity-summary-header">
-                                    <span className="activity-type-badge">
-                                      {act.type === 'hiking' ? '🥾 Hiking' : act.type === 'ski-touring' ? '🎿 Ski Touring' : `🎯 ${act.type}`}
-                                    </span>
-                                    <span className={`activity-importance-pill ${act.importance}`}>
-                                      {act.importance}
-                                    </span>
-                                  </div>
-
-                                  {(act.miles || act.elevationGain || act.elevationLost) && (
-                                    <div className="activity-metrics-row">
-                                      {act.miles && <span className="metric-pill">📏 {act.miles} mi</span>}
-                                      {act.elevationGain && <span className="metric-pill gain">📈 +{act.elevationGain} ft</span>}
-                                      {act.elevationLost && <span className="metric-pill loss">📉 -{act.elevationLost} ft</span>}
-                                    </div>
-                                  )}
-
-                                  {act.description && (
-                                    <p className="activity-summary-desc">{renderTextWithLinks(act.description)}</p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {(() => {
-              const editingDay = (currentTrip.days || []).find(d => d.id === editingDayId);
-              const editingDayIndex = (currentTrip.days || []).findIndex(d => d.id === editingDayId);
-              if (!editingDay || editingDayIndex === -1) return null;
-
-              return (
-                <div
-                  className="day-edit-modal-overlay"
-                  onClick={(e) => {
-                    if (e.target === e.currentTarget) setEditingDayId(null);
-                  }}
-                >
-                  <div className="day-edit-modal-content">
-                    <div className="day-edit-modal-header">
-                      <h2>Edit Day {editingDayIndex + 1}</h2>
-                      <button
-                        type="button"
-                        className="day-edit-modal-close"
-                        onClick={() => setEditingDayId(null)}
-                        title="Close modal"
-                      >
-                        ×
-                      </button>
-                    </div>
-
-                    <div className="day-edit-modal-body">
-                      <label className="day-field">
-                        <span className="day-field-label">Location</span>
-                        <div className="day-location-row">
-                          <input
-                            type="text"
-                            className="day-location-input"
-                            placeholder="e.g. Boulder, CO or 40.1234, -105.1234"
-                            value={editingDay.location}
-                            onChange={(e) => updateTripDayLocation(editingDay.id, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                (e.target as HTMLInputElement).blur();
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="map-picker-btn"
-                            title="Pick location on map"
-                            onClick={() => setMapPickerDayId(editingDay.id)}
-                          >
-                            📍
-                          </button>
-                        </div>
-                      </label>
-
-                      <label className="day-field day-description-field">
-                        <span className="day-field-label">Description</span>
-                        <textarea
-                          className="day-description-input"
-                          placeholder="Describe the plan for this day..."
-                          value={editingDay.description || ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            updateCurrentTrip(trip => {
-                              const days = [...(trip.days || [])];
-                              const targetIdx = days.findIndex(d => d.id === editingDay.id);
-                              if (targetIdx !== -1) {
-                                days[targetIdx] = { ...days[targetIdx], description: val };
-                              }
-                              return { ...trip, days, lastModified: Date.now() };
-                            });
-                          }}
-                        />
-                      </label>
-
-                      <div className="day-activities">
-                        <div className="day-activities-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <h3>Activities ({(editingDay.activities || []).length})</h3>
-                          <button
-                            type="button"
-                            className="add-activity-btn"
-                            onClick={() => addTripDayActivity(editingDay.id)}
-                          >
-                            + Add Activity
-                          </button>
-                        </div>
-                        {(!editingDay.activities || editingDay.activities.length === 0) ? (
-                          <p className="empty-activities">No activities yet.</p>
-                        ) : (
-                          <div className="activity-list">
-                            {editingDay.activities.map((activity, activityIndex) => (
-                              <div key={activity.id} className="activity-row">
-                                <div className="activity-number">Activity {activityIndex + 1}</div>
-                                <div className="activity-fields">
-                                  <label className="day-field">
-                                    <span className="day-field-label">Type</span>
-                                    <select
-                                      value={activity.type}
-                                      onChange={(e) => {
-                                        const selectedValue = e.target.value;
-                                        if (selectedValue === 'custom') {
-                                          void promptForCustomActivityType(activity.type).then(customType => {
-                                            if (customType) {
-                                              updateTripDayActivity(editingDay.id, activity.id, { type: customType });
-                                            }
-                                          });
-                                        } else {
-                                          updateTripDayActivity(editingDay.id, activity.id, { type: selectedValue as any });
-                                        }
-                                      }}
-                                    >
-                                      <option value="hiking">Hiking</option>
-                                      <option value="biking">Biking</option>
-                                      <option value="ski-touring">Ski Touring</option>
-                                      {activity.type !== 'hiking' && activity.type !== 'biking' && activity.type !== 'ski-touring' && activity.type !== 'custom' && (
-                                        <option value={activity.type}>{activity.type}</option>
-                                      )}
-                                      <option value="custom">Custom</option>
-                                    </select>
-                                  </label>
-                                  <label className="day-field">
-                                    <span className="day-field-label">Importance</span>
-                                    <select
-                                      value={activity.importance}
-                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { importance: e.target.value as any })}
-                                    >
-                                      <option value="mandatory">Mandatory</option>
-                                      <option value="optional">Optional</option>
-                                    </select>
-                                  </label>
-                                  <label className="day-field activity-description-field">
-                                    <span className="day-field-label">Description</span>
-                                    <textarea
-                                      placeholder="Describe this activity..."
-                                      value={activity.description}
-                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { description: e.target.value })}
-                                    />
-                                  </label>
-                                  <label className="day-field">
-                                    <span className="day-field-label">Miles</span>
-                                    <input
-                                      type="text"
-                                      placeholder="Miles"
-                                      value={activity.miles}
-                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { miles: e.target.value })}
-                                    />
-                                  </label>
-                                  <label className="day-field">
-                                    <span className="day-field-label">Elevation Gain</span>
-                                    <input
-                                      type="text"
-                                      placeholder="Elevation gain"
-                                      value={activity.elevationGain}
-                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { elevationGain: e.target.value })}
-                                    />
-                                  </label>
-                                  <label className="day-field">
-                                    <span className="day-field-label">Elevation Lost</span>
-                                    <input
-                                      type="text"
-                                      placeholder="Elevation lost"
-                                      value={activity.elevationLost}
-                                      onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { elevationLost: e.target.value })}
-                                    />
-                                  </label>
-                                </div>
-                                <button
-                                  type="button"
-                                  className="delete-activity-btn"
-                                  onClick={() => deleteTripDayActivity(editingDay.id, activity.id)}
-                                  title="Remove activity"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="day-edit-modal-footer">
-                      <button
-                        type="button"
-                        className="day-edit-done-btn"
-                        onClick={() => setEditingDayId(null)}
-                      >
-                        Done
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
+          <TripTab
+            currentTrip={currentTrip}
+            updateStartDate={updateStartDate}
+            gearCloset={gearCloset}
+            removeTripTag={removeTripTag}
+            addTripTag={addTripTag}
+            tripTagInput={tripTagInput}
+            setTripTagInput={setTripTagInput}
+            addTripDay={addTripDay}
+            draggedDayId={draggedDayId}
+            dragOverDayId={dragOverDayId}
+            setDragOverDayId={setDragOverDayId}
+            reorderTripDays={reorderTripDays}
+            setDraggedDayId={setDraggedDayId}
+            setEditingDayId={setEditingDayId}
+            deleteTripDay={deleteTripDay}
+            editingDayId={editingDayId}
+            updateTripDayLocation={updateTripDayLocation}
+            setMapPickerDayId={setMapPickerDayId}
+            updateCurrentTrip={updateCurrentTrip}
+            addTripDayActivity={addTripDayActivity}
+            promptForCustomActivityType={promptForCustomActivityType}
+            updateTripDayActivity={updateTripDayActivity}
+            deleteTripDayActivity={deleteTripDayActivity}
+          />
         ) : activeCategory ? (
-          <div className="packing-view">
-            <div className="category-header">
-              <div className="category-title">
-                <h2>{activeCategory.name}</h2>
-                <div className="category-actions">
-                  <button 
-                    className="copy-tab-btn" 
-                    onClick={() => setCopyListModalOpen(true)}
-                    title="Copy to Trip"
-                  >
-                    Copy to Trip
-                  </button>
-                  <button 
-                    className="delete-tab-btn" 
-                    onClick={() => deleteCategory(activeCategory.id)}
-                    title="Delete Tab"
-                  >
-                    🗑
-                  </button>
-                </div>
-              </div>
-              <div className="item-input">
-                <input 
-                  type="text" 
-                  placeholder="Quick add item..." 
-                  value={newItemDrafts[activeCategory.id] || ''}
-                  onChange={(e) => {
-                    setNewItemDrafts(prev => ({
-                      ...prev,
-                      [activeCategory.id]: e.target.value,
-                    }));
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addItem(activeCategory.id, (e.target as HTMLInputElement).value);
-                      setNewItemDrafts(prev => ({
-                        ...prev,
-                        [activeCategory.id]: '',
-                      }));
-                    }
-                  }}
-                />
-                <button
-                  className="add-item-btn"
-                  onClick={() => {
-                    const name = newItemDrafts[activeCategory.id] || '';
-                    addItem(activeCategory.id, name);
-                    setNewItemDrafts(prev => ({
-                      ...prev,
-                      [activeCategory.id]: '',
-                    }));
-                  }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-
-            <div className="matrix-wrapper">
-              <table className="packing-matrix">
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    {currentTrip.people.map(p => {
-                      const listStats = calcPersonPackingStats(currentTrip, activeCategory.id, gearCloset);
-                      const personStat = listStats.find(s => s.personId === p.id);
-                      return (
-                        <th key={p.id} className="person-col-header">
-                          <span className="person-col-name">{p.name}</span>
-                          {personStat && personStat.plannedWeightOz > 0 && (
-                            <div className="person-col-weight-container">
-                              <span className="person-col-weight" title="Total Weight">{formatWeight(personStat.plannedWeightOz)}</span>
-                              <div className="person-col-weight-breakdown">
-                                <span title="Base Weight">🎒 {formatWeight(personStat.baseWeightOz)}</span>
-                                <span title="Worn Weight">👕 {formatWeight(personStat.wornWeightOz)}</span>
-                                <span title="Food Weight">🍴 {formatWeight(personStat.foodWeightOz)}</span>
-                              </div>
-                            </div>
-                          )}
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeCategory.items.map(item => (
-                    <tr key={item.id} className={item.isGroupGear ? 'group-gear-row' : ''}>
-                      <td className="item-name">
-                        <div className="item-name-cell-content">
-                          <div className="item-name-text">
-                            <div className="item-name-title-row">
-                              <span className="item-name-title">{item.name}</span>
-                              {(item.weight !== undefined && item.weight !== null && item.weight !== '') && (
-                                <span className="item-weight-pill">
-                                  ⚖️ {item.weight} {item.weightUnit || 'oz'}
-                                </span>
-                              )}
-                            </div>
-                            {item.description && (
-                              <div className="item-desc-text">{renderTextWithLinks(item.description)}</div>
-                            )}
-
-                            <div className="group-gear-toggle-container">
-                              <label className={`group-gear-checkbox-label ${item.isGroupGear ? 'checked' : ''}`}>
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(item.isGroupGear)}
-                                  onChange={(e) => toggleGroupGear(activeCategory.id, item.id, e.target.checked)}
-                                />
-                                <span className="group-gear-checkbox-text">Group Gear</span>
-                              </label>
-                            </div>
-
-                            {item.isGroupGear && (
-                              <div className="group-gear-fields">
-                                <div className="group-gear-field">
-                                  <label htmlFor={`brought-by-${item.id}`}>Brought by:</label>
-                                  <select
-                                    id={`brought-by-${item.id}`}
-                                    className="group-gear-select"
-                                    value={item.broughtByPersonId || ''}
-                                    onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'broughtByPersonId', e.target.value || undefined)}
-                                  >
-                                    <option value="">None</option>
-                                    {currentTrip.people.map(person => (
-                                      <option key={person.id} value={person.id}>{person.name}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="group-gear-field">
-                                  <label htmlFor={`carried-by-${item.id}`}>Carried by:</label>
-                                  <select
-                                    id={`carried-by-${item.id}`}
-                                    className="group-gear-select"
-                                    value={item.carriedByPersonId || ''}
-                                    onChange={(e) => setItemAssignment(activeCategory.id, item.id, 'carriedByPersonId', e.target.value || undefined)}
-                                  >
-                                    <option value="">None</option>
-                                    {currentTrip.people.map(person => (
-                                      <option key={person.id} value={person.id}>{person.name}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="group-gear-field group-gear-field-for">
-                                  <label>For:</label>
-                                  <div className="group-gear-for-container">
-                                    {currentTrip.people.map(person => {
-                                      const isSelected = item.forPersonIds?.includes(person.id) || false;
-                                      return (
-                                        <label key={person.id} className={`group-gear-for-checkbox-label ${isSelected ? 'selected' : ''}`}>
-                                          <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={(e) => toggleForPerson(activeCategory.id, item.id, person.id, e.target.checked)}
-                                          />
-                                          <span>{person.name}</span>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            className="delete-item-btn"
-                            onClick={() => deleteItem(activeCategory.id, item.id)}
-                            title={`Delete ${item.name}`}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </td>
-                      {currentTrip.people.map(person => {
-                        const personStatus = item.personStatuses[person.id] || 'not-packed';
-                        const personQty = item.personQuantities?.[person.id] ?? (item.quantity ?? 1);
-                        return (
-                          <td key={person.id} className="person-status-cell">
-                            <div className="cell-content-wrapper">
-                              <select 
-                                value={personStatus}
-                                onChange={(e) => updateStatus(activeCategory.id, item.id, person.id, e.target.value)}
-                                style={{ 
-                                  backgroundColor: DEFAULT_STATUSES.find(s => s.id === personStatus)?.color + '44',
-                                  borderColor: DEFAULT_STATUSES.find(s => s.id === personStatus)?.color
-                                }}
-                              >
-                                {DEFAULT_STATUSES.map(status => (
-                                  <option key={status.id} value={status.id}>{status.label}</option>
-                                ))}
-                              </select>
-                            {(() => {
-                              const carrierId = item.personCarriedBy?.[person.id];
-                              const carrier = carrierId ? currentTrip.people.find(p => p.id === carrierId) : undefined;
-                              const linkedGear = item.personGearItems?.[person.id];
-                              const chips = [
-                                personStatus !== 'not-bringing' && personQty > 1 ? `×${personQty}` : null,
-                                personStatus !== 'not-bringing' && carrier ? `Carried by ${carrier.name}` : null,
-                                linkedGear ? `🏷️ ${linkedGear.name}` : null,
-                              ].filter(Boolean) as string[];
-                              return (
-                                <details className="cell-details">
-                                  <summary title={`Quantity, carrier and gear for ${person.name}`}>
-                                    {chips.length > 0
-                                      ? chips.map(chip => <span key={chip} className="cell-detail-chip">{chip}</span>)
-                                      : <span className="cell-details-placeholder">Details</span>}
-                                  </summary>
-                                  <div className="cell-details-body">
-                                      {personStatus !== 'not-bringing' && (
-                                        <div className="cell-carried-by-row">
-                                          {currentTrip.people.length > 1 ? (
-                                            <div className="cell-carried-by-group">
-                                              <label className="cell-carried-by-label">📦 Carried by</label>
-                                              <select
-                                                className="cell-carried-by-select"
-                                                value={item.personCarriedBy?.[person.id] || ''}
-                                                onChange={(e) => setPersonCarriedBy(activeCategory.id, item.id, person.id, e.target.value || undefined)}
-                                              >
-                                                <option value="">— self —</option>
-                                                {currentTrip.people
-                                                  .filter(p => p.id !== person.id)
-                                                  .map(p => (
-                                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                                  ))}
-                                              </select>
-                                            </div>
-                                          ) : (
-                                            <div className="cell-qty-label-container">
-                                              <span className="cell-qty-label">Qty:</span>
-                                            </div>
-                                          )}
-                                          <div className="cell-qty-stepper">
-                                            <button
-                                              type="button"
-                                              className="cell-qty-btn"
-                                              onClick={() => updatePersonQuantity(activeCategory.id, item.id, person.id, personQty - 1)}
-                                              disabled={personQty <= 1}
-                                              title="Decrease quantity"
-                                            >−</button>
-                                            <span className="cell-qty-value">{personQty}</span>
-                                            <button
-                                              type="button"
-                                              className="cell-qty-btn"
-                                              onClick={() => updatePersonQuantity(activeCategory.id, item.id, person.id, personQty + 1)}
-                                              title="Increase quantity"
-                                            >+</button>
-                                          </div>
-                                        </div>
-                                      )}
-                                    {item.personGearItems?.[person.id] && (
-                                      <div className="cell-linked-gear">
-                                        <span className="cell-linked-gear-name" title={item.personGearItems[person.id].description}>
-                                          🏷️ {item.personGearItems[person.id].name}
-                                        </span>
-                                        <span className="cell-linked-gear-weight">
-                                          ⚖️ {item.personGearItems[person.id].weight} {item.personGearItems[person.id].weightUnit || 'oz'}
-                                        </span>
-                                      </div>
-                                    )}
-                                    <div className="cell-action-row">
-                                      <button
-                                        type="button"
-                                        className="cell-closet-btn"
-                                        title={item.personGearItems?.[person.id] ? `Change gear closet item for ${person.name}` : `Link gear closet item for ${person.name}`}
-                                        onClick={() => {
-                                          setClosetPickerCategoryId(activeCategory.id);
-                                          setClosetPickerItemId(item.id);
-                                          setClosetPickerPersonId(person.id);
-                                          setClosetPickerOpen(true);
-                                        }}
-                                      >
-                                        {item.personGearItems?.[person.id] ? '🔄 Change' : '📦 Link Gear'}
-                                      </button>
-                                      {item.personGearItems?.[person.id] && (
-                                        <>
-                                          <button
-                                            type="button"
-                                            className={`cell-weight-type-btn ${item.personGearItems[person.id].weightType === 'worn' ? 'active' : ''}`}
-                                            title={item.personGearItems[person.id].weightType === 'worn' ? 'Currently Worn Weight (click to set Base Weight)' : 'Mark as Worn Weight'}
-                                            onClick={() => togglePersonGearWeightType(activeCategory.id, item.id, person.id, 'worn')}
-                                          >
-                                            👕
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className={`cell-weight-type-btn ${item.personGearItems[person.id].weightType === 'food' ? 'active' : ''}`}
-                                            title={item.personGearItems[person.id].weightType === 'food' ? 'Currently Food Weight (click to set Base Weight)' : 'Mark as Food Weight'}
-                                            onClick={() => togglePersonGearWeightType(activeCategory.id, item.id, person.id, 'food')}
-                                          >
-                                            🍴
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="cell-unlink-btn"
-                                            title="Remove link to gear closet item"
-                                            onClick={() => removePersonGearLink(activeCategory.id, item.id, person.id)}
-                                          >
-                                            ✕
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                </details>
-                              );
-                            })()}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <footer className="tab-actions">
-              <div className="tab-bulk-actions">
-                <div className="tab-bulk-set">
-                  <select
-                    value={bulkStatusValue}
-                    onChange={e => setBulkStatusValue(e.target.value)}
-                    className="bulk-status-select"
-                  >
-                    <option value="">Set all to…</option>
-                    {DEFAULT_STATUSES.map(s => (
-                      <option key={s.id} value={s.id}>{s.label}</option>
-                    ))}
-                  </select>
-                  <button
-                    className="bulk-status-apply-btn"
-                    disabled={!bulkStatusValue}
-                    onClick={() => {
-                      setAllTabStatus(activeCategory.id, bulkStatusValue);
-                      setBulkStatusValue('');
-                    }}
-                  >
-                    Apply
-                  </button>
-                </div>
-                <button onClick={() => resetTab(activeCategory.id)} className="danger tab-reset-btn">
-                  Reset to Unpacked
-                </button>
-              </div>
-            </footer>
-          </div>
+          <PackingListTab
+            activeCategory={activeCategory}
+            setCopyListModalOpen={setCopyListModalOpen}
+            deleteCategory={deleteCategory}
+            newItemDrafts={newItemDrafts}
+            setNewItemDrafts={setNewItemDrafts}
+            addItem={addItem}
+            currentTrip={currentTrip}
+            gearCloset={gearCloset}
+            toggleGroupGear={toggleGroupGear}
+            setItemAssignment={setItemAssignment}
+            toggleForPerson={toggleForPerson}
+            deleteItem={deleteItem}
+            updateStatus={updateStatus}
+            setPersonCarriedBy={setPersonCarriedBy}
+            updatePersonQuantity={updatePersonQuantity}
+            setClosetPickerCategoryId={setClosetPickerCategoryId}
+            setClosetPickerItemId={setClosetPickerItemId}
+            setClosetPickerPersonId={setClosetPickerPersonId}
+            setClosetPickerOpen={setClosetPickerOpen}
+            togglePersonGearWeightType={togglePersonGearWeightType}
+            removePersonGearLink={removePersonGearLink}
+            bulkStatusValue={bulkStatusValue}
+            setBulkStatusValue={setBulkStatusValue}
+            setAllTabStatus={setAllTabStatus}
+            resetTab={resetTab}
+          />
         ) : null}
       </main>
 
-      <section className="print-all-tabs-container">
-        <div className="print-section">
-          <h2>Trip</h2>
-          <p><strong>Trip Start Date:</strong> {currentTrip.startDate || 'Not set'}</p>
-          {tripDays.length > 0 ? (
-            <div>
-              {tripDays.map((day, index) => (
-                <div key={day.id} className="print-day-card">
-                  <h3>Day {index + 1}</h3>
-                  <p><strong>Location:</strong> {day.location || 'No location'}</p>
-                  {day.description && <p><strong>Description:</strong> {day.description}</p>}
-                  {(day.activities || []).length > 0 && (
-                    <div>
-                      <strong>Activities:</strong>
-                      <ul>
-                        {(day.activities || []).map((activity, activityIndex) => (
-                          <li key={activity.id}>
-                            <p><strong>Activity {activityIndex + 1}:</strong> {activity.description || 'No description'}</p>
-                            <p><strong>Type:</strong> {activity.type}</p>
-                            <p><strong>Importance:</strong> {activity.importance}</p>
-                            <p><strong>Miles:</strong> {activity.miles || '—'}</p>
-                            <p><strong>Elevation Gain:</strong> {activity.elevationGain || '—'}</p>
-                            <p><strong>Elevation Lost:</strong> {activity.elevationLost || '—'}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {day.notes && <p><strong>Notes:</strong> {day.notes}</p>}
-                  {day.weatherLinks && (
-                    <div>
-                      <strong>Weather Links:</strong>
-                      <ul>
-                        {day.weatherLinks.split(/\n+/).map(link => link.trim()).filter(Boolean).map(link => (
-                          <li key={link}>{link}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p>No days added.</p>
-          )}
-        </div>
-
-        <div className="print-section">
-          <h2>Weather</h2>
-          {weatherRows.length > 0 ? (
-            weatherRows.map(row => (
-              <div key={row.dayIndex} className="print-day-card">
-                <h3>{row.date}</h3>
-                <p>{row.location || 'Missing location'}</p>
-                <p>{row.summary}</p>
-                <p>Sea Level: {row.highLow[0]?.high} / {row.highLow[0]?.low}</p>
-                <p>3,000 ft: {row.highLow[3000]?.high} / {row.highLow[3000]?.low}</p>
-                <p>6,000 ft: {row.highLow[6000]?.high} / {row.highLow[6000]?.low}</p>
-                <p>10,000 ft: {row.highLow[10000]?.high} / {row.highLow[10000]?.low}</p>
-              </div>
-            ))
-          ) : (
-            <p>No weather forecast data.</p>
-          )}
-        </div>
-
-        <div className="print-section">
-          <h2>Caltopo</h2>
-          <p>{currentTrip.caltopoUrl || 'No Caltopo URL saved.'}</p>
-        </div>
-
-        <div className="print-section">
-          <h2>Not Packed</h2>
-          {notPackedItems.length > 0 ? (
-            <table className="packing-matrix print-table">
-              <thead>
-                <tr>
-                  <th>Person</th>
-                  <th>Category</th>
-                  <th>Item</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {notPackedItems.map(({ person, category, item, status }) => (
-                  <tr key={`${person.id}-${category.id}-${item.id}`}>
-                    <td>{person.name}</td>
-                    <td>{category.name}</td>
-                    <td>{item.name}</td>
-                    <td>{DEFAULT_STATUSES.find(s => s.id === status)?.label || status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>Everything packed.</p>
-          )}
-        </div>
-
-        {currentTrip.categories.map(category => (
-          <div key={category.id} className="print-section">
-            <h2>{category.name}</h2>
-            <table className="packing-matrix print-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  {currentTrip.people.map(person => (
-                    <th key={person.id}>{person.name}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {category.items.map(item => (
-                  <tr key={item.id}>
-                    <td>{item.name}</td>
-                    {currentTrip.people.map(person => (
-                      <td key={person.id}>{DEFAULT_STATUSES.find(s => s.id === (item.personStatuses[person.id] || 'not-packed'))?.label || 'Not packed'}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
-      </section>
+      <PrintAllTabs
+        currentTrip={currentTrip}
+        tripDays={tripDays}
+        weatherRows={weatherRows}
+        notPackedItems={notPackedItems}
+      />
 
       {isShareModalOpen && currentTrip && (
         <ShareModal

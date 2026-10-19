@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { parseCoordinates } from './weatherUtils';
 
 // Fix default marker icons that get broken by bundlers
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -53,6 +53,7 @@ const LocationMapPicker: React.FC<LocationMapPickerProps> = ({
     if (existingCoords) {
       const marker = L.marker([existingCoords.latitude, existingCoords.longitude], { draggable: true }).addTo(map);
       markerRef.current = marker;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seeds the picked point from the existing marker when the map initializes
       setPickedCoords({ lat: existingCoords.latitude, lng: existingCoords.longitude });
       marker.on('dragend', () => {
         const pos = marker.getLatLng();
