@@ -5,6 +5,7 @@ import type { Trip } from './types';
 
 interface TripHeaderProps {
   navigateToDashboard: () => void;
+  openTemplates: () => void;
   currentTrip: Trip;
   setCurrentTripId: Dispatch<SetStateAction<string | null>>;
   trips: Trip[];
@@ -38,6 +39,7 @@ interface TripHeaderProps {
 
 export function TripHeader({
   navigateToDashboard,
+  openTemplates,
   currentTrip,
   setCurrentTripId,
   trips,
@@ -68,20 +70,31 @@ export function TripHeader({
   lastTranscript,
   askAnswer,
 }: TripHeaderProps) {
+  const isTemplate = currentTrip.isTemplate === true;
+
   return (
     <header className="trip-header">
       <div className="trip-header-top">
-        <button onClick={navigateToDashboard} className="back-to-list-btn">← All Trips</button>
-        <select
-          className="trip-switcher"
-          aria-label="Switch trip"
-          value={currentTrip.id}
-          onChange={(e) => setCurrentTripId(e.target.value)}
-        >
-          {trips.filter(t => !t.isTemplate).map(t => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
+        {isTemplate ? (
+          <>
+            <button onClick={openTemplates} className="back-to-list-btn">← Templates</button>
+            <span className="template-editing-note">Editing template. New trips made from it will start with these changes.</span>
+          </>
+        ) : (
+          <>
+            <button onClick={navigateToDashboard} className="back-to-list-btn">← All Trips</button>
+            <select
+              className="trip-switcher"
+              aria-label="Switch trip"
+              value={currentTrip.id}
+              onChange={(e) => setCurrentTripId(e.target.value)}
+            >
+              {trips.filter(t => !t.isTemplate).map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
       <div className="trip-info">
         <div className="trip-title-block">
@@ -112,43 +125,49 @@ export function TripHeader({
             </div>
           </div>
         </div>
-        <div className="trip-actions">
-          <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
-          <button
-            type="button"
-            onClick={() => handleCopyTripLink()}
-            className="copy-trip-link-btn"
-            title="Copy direct link to this trip"
-          >
-            {copiedTripLink ? '✓ Copied Link' : '🔗 Copy Link'}
-          </button>
-          <details className="trip-more-menu" ref={tripMenuRef}>
-            <summary aria-label="More trip actions">More ▾</summary>
-            <div className="trip-more-menu-list" onClick={closeTripMenu}>
-              <button onClick={async () => {
-                const name = (await promptDialog({
-                  title: 'Create a new trip',
-                  label: 'Trip name',
-                  placeholder: 'e.g. Enchantments thru-hike',
-                  confirmLabel: 'Create Trip',
-                }))?.trim();
-                if (name) createNewTrip(name);
-              }}>Create New Trip</button>
-              <button onClick={copyTrip}>Copy Trip</button>
-              {user.id === currentTrip.userId && (
-                <button onClick={saveCurrentTripAsTemplate}>Save as Template</button>
-              )}
-              <button onClick={handlePrintAllTabs}>Download All Tabs</button>
-              <button onClick={resetTrip}>Reset Items</button>
-              <hr />
-              {user.id === currentTrip.userId ? (
-                <button onClick={deleteTrip} className="danger">Delete Trip</button>
-              ) : (
-                <button onClick={leaveTrip} className="danger">Remove Trip</button>
-              )}
-            </div>
-          </details>
-        </div>
+        {isTemplate ? (
+          <div className="trip-actions">
+            <button type="button" className="share-btn-accent" onClick={openTemplates}>Done</button>
+          </div>
+        ) : (
+          <div className="trip-actions">
+            <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
+            <button
+              type="button"
+              onClick={() => handleCopyTripLink()}
+              className="copy-trip-link-btn"
+              title="Copy direct link to this trip"
+            >
+              {copiedTripLink ? '✓ Copied Link' : '🔗 Copy Link'}
+            </button>
+            <details className="trip-more-menu" ref={tripMenuRef}>
+              <summary aria-label="More trip actions">More ▾</summary>
+              <div className="trip-more-menu-list" onClick={closeTripMenu}>
+                <button onClick={async () => {
+                  const name = (await promptDialog({
+                    title: 'Create a new trip',
+                    label: 'Trip name',
+                    placeholder: 'e.g. Enchantments thru-hike',
+                    confirmLabel: 'Create Trip',
+                  }))?.trim();
+                  if (name) createNewTrip(name);
+                }}>Create New Trip</button>
+                <button onClick={copyTrip}>Copy Trip</button>
+                {user.id === currentTrip.userId && (
+                  <button onClick={saveCurrentTripAsTemplate}>Save as Template</button>
+                )}
+                <button onClick={handlePrintAllTabs}>Download All Tabs</button>
+                <button onClick={resetTrip}>Reset Items</button>
+                <hr />
+                {user.id === currentTrip.userId ? (
+                  <button onClick={deleteTrip} className="danger">Delete Trip</button>
+                ) : (
+                  <button onClick={leaveTrip} className="danger">Remove Trip</button>
+                )}
+              </div>
+            </details>
+          </div>
+        )}
       </div>
 
       <div className="trip-header-bottom">
@@ -197,35 +216,37 @@ export function TripHeader({
             }}>+ Add Person</button>
           </div>
         </div>
-        <div className="voice-controls">
-          <form className="ask-form" onSubmit={event => {
-            event.preventDefault();
-            void askTripQuestion(askQuestion);
-          }}>
-            <input
-              value={askQuestion}
-              onChange={event => setAskQuestion(event.target.value)}
-              placeholder="Ask about this trip"
-              aria-label="Question about this trip"
-              maxLength={500}
-            />
-            <button type="submit" className="voice-btn" disabled={isAsking || !askQuestion.trim()}>
-              {isAsking ? 'Thinking...' : 'Ask'}
+        {!isTemplate && (
+          <div className="voice-controls">
+            <form className="ask-form" onSubmit={event => {
+              event.preventDefault();
+              void askTripQuestion(askQuestion);
+            }}>
+              <input
+                value={askQuestion}
+                onChange={event => setAskQuestion(event.target.value)}
+                placeholder="Ask about this trip"
+                aria-label="Question about this trip"
+                maxLength={500}
+              />
+              <button type="submit" className="voice-btn" disabled={isAsking || !askQuestion.trim()}>
+                {isAsking ? 'Thinking...' : 'Ask'}
+              </button>
+            </form>
+            <button
+              type="button"
+              className={`voice-btn ${isListening ? 'listening' : ''}`}
+              onClick={toggleVoiceQuestion}
+              title="Ask a question about this trip by voice"
+            >
+              {isListening ? 'Stop voice' : 'Voice'}
             </button>
-          </form>
-          <button
-            type="button"
-            className={`voice-btn ${isListening ? 'listening' : ''}`}
-            onClick={toggleVoiceQuestion}
-            title="Ask a question about this trip by voice"
-          >
-            {isListening ? 'Stop voice' : 'Voice'}
-          </button>
-          <div className="ask-response" aria-live="polite">
-            {lastTranscript && <div className="voice-transcript">You asked: {lastTranscript}</div>}
-            {askAnswer && <div className="voice-answer">{askAnswer}</div>}
+            <div className="ask-response" aria-live="polite">
+              {lastTranscript && <div className="voice-transcript">You asked: {lastTranscript}</div>}
+              {askAnswer && <div className="voice-answer">{askAnswer}</div>}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </header>
   );
