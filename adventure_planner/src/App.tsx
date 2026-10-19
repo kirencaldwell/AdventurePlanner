@@ -706,6 +706,7 @@ const TripDashboard = ({
   const hasActiveFilters = Object.values(filters).some(value =>
     Array.isArray(value) ? value.length > 0 : value.trim() !== ''
   );
+  const [filtersOpen, setFiltersOpen] = useState(hasActiveFilters);
   const activityTypes = Array.from(new Set([
     'hiking',
     'ski-touring',
@@ -761,9 +762,21 @@ const TripDashboard = ({
         <button onClick={onNewTrip} className="new-trip-btn">+ New Trip</button>
       </div>
     </header>
-    <section className="trip-filter-panel" aria-labelledby="trip-filter-heading">
+    <section className={`trip-filter-panel ${filtersOpen ? 'open' : 'collapsed'}`} aria-labelledby="trip-filter-heading">
       <div className="trip-filter-header">
-        <h2 id="trip-filter-heading">Filter trips</h2>
+        <h2 id="trip-filter-heading">
+          <button
+            type="button"
+            className="trip-filter-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls="trip-filter-grid"
+            onClick={() => setFiltersOpen(open => !open)}
+          >
+            <span className="trip-filter-chevron" aria-hidden="true">{filtersOpen ? '▾' : '▸'}</span>
+            Filter trips
+            {hasActiveFilters && <span className="trip-filter-active-dot">Active</span>}
+          </button>
+        </h2>
         <div className="trip-filter-actions">
           <span role="status">{filteredTrips.length} of {trips.length} trips</span>
           <button type="button" onClick={() => onFiltersChange(() => createDefaultTripDashboardFilters())} disabled={!hasActiveFilters}>
@@ -771,7 +784,7 @@ const TripDashboard = ({
           </button>
         </div>
       </div>
-      <div className="trip-filter-grid">
+      {filtersOpen && <div className="trip-filter-grid" id="trip-filter-grid">
         <fieldset className="trip-filter-range">
           <legend>Miles</legend>
           <label>Min<input type="number" min="0" step="0.1" value={filters.minMiles} onChange={event => updateFilter('minMiles', event.target.value)} /></label>
@@ -831,7 +844,7 @@ const TripDashboard = ({
             <option value="no">No comment</option>
           </select>
         </label>
-      </div>
+      </div>}
     </section>
     <div className="trip-list">
       {filteredTrips.length === 0 ? (
@@ -1032,6 +1045,30 @@ function App() {
   const [askAnswer, setAskAnswer] = useState('');
   const [isAsking, setIsAsking] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const tripMenuRef = useRef<HTMLDetailsElement>(null);
+  const closeTripMenu = () => {
+    if (tripMenuRef.current) tripMenuRef.current.open = false;
+  };
+
+  // Close the trip "More" menu on outside click or Escape
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (tripMenuRef.current?.open && !tripMenuRef.current.contains(event.target as Node)) {
+        tripMenuRef.current.open = false;
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && tripMenuRef.current?.open) {
+        tripMenuRef.current.open = false;
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
   const [hasForcedDashboard, setHasForcedDashboard] = useState<boolean>(() => Boolean(initialTargetTripId));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [caltopoLinkInput, setCaltopoLinkInput] = useState('');
@@ -3245,8 +3282,20 @@ function App() {
     <div className="app-container">
       <GlobalNav />
       <header className="trip-header">
+        <div className="trip-header-top">
+          <button onClick={navigateToDashboard} className="back-to-list-btn">← All Trips</button>
+          <select
+            className="trip-switcher"
+            aria-label="Switch trip"
+            value={currentTrip.id}
+            onChange={(e) => setCurrentTripId(e.target.value)}
+          >
+            {trips.filter(t => !t.isTemplate).map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
         <div className="trip-info">
-          <button onClick={navigateToDashboard} className="back-to-list-btn">← Back to List</button>
           <div className="trip-title-block">
             <div className="trip-title-wrapper">
               <h1 
@@ -3254,10 +3303,11 @@ function App() {
                 suppressContentEditableWarning
                 onBlur={(e) => updateTripName(e.currentTarget.textContent || currentTrip.name)}
                 onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                title="Click to rename"
               >
                 {currentTrip.name}
               </h1>
-              <span className="edit-hint">✎</span>
+              <span className="edit-hint" aria-hidden="true">✎</span>
             </div>
             <div className="trip-stats" aria-label="Trip stats">
               <div className="trip-stat">
@@ -3275,10 +3325,6 @@ function App() {
             </div>
           </div>
           <div className="trip-actions">
-            <button onClick={() => {
-              const name = prompt('Trip Name?');
-              if (name) createNewTrip(name);
-            }}>Create New Trip</button>
             <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
             <button
               type="button"
@@ -3286,129 +3332,132 @@ function App() {
               className="copy-trip-link-btn"
               title="Copy direct link to this trip"
             >
-              {copiedTripLink ? '✓ Copied Link' : '🔗 Copy Trip Link'}
+              {copiedTripLink ? '✓ Copied Link' : '🔗 Copy Link'}
             </button>
-            <button onClick={copyTrip}>Copy Trip</button>
-            {user.id === currentTrip.userId && (
-              <button onClick={saveCurrentTripAsTemplate}>Save as Template</button>
-            )}
-
-            {user.id === currentTrip.userId ? (
-              <button onClick={deleteTrip} className="danger">Delete Trip</button>
-            ) : (
-              <button onClick={leaveTrip} className="danger">Remove Trip</button>
-            )}
-            <button onClick={resetTrip}>Reset Items</button>
-            <button onClick={handlePrintAllTabs}>Download All Tabs</button>
-            <select 
-              value={currentTrip.id} 
-              onChange={(e) => setCurrentTripId(e.target.value)}
-            >
-              {trips.filter(t => !t.isTemplate).map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-            <div className="voice-controls">
-              <form className="ask-form" onSubmit={event => {
-                event.preventDefault();
-                void askTripQuestion(askQuestion);
-              }}>
-                <input
-                  value={askQuestion}
-                  onChange={event => setAskQuestion(event.target.value)}
-                  placeholder="Ask about this trip"
-                  aria-label="Question about this trip"
-                  maxLength={500}
-                />
-                <button type="submit" className="voice-btn" disabled={isAsking || !askQuestion.trim()}>
-                  {isAsking ? 'Thinking...' : 'Ask'}
-                </button>
-              </form>
-              <button
-                type="button"
-                className={`voice-btn ${isListening ? 'listening' : ''}`}
-                onClick={() => {
-                  if (isListening) {
-                    try { recognitionRef.current?.stop(); } catch {};
-                    setIsListening(false);
-                  } else {
-                    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-                    if (!SpeechRecognition) {
-                      alert('Speech Recognition not supported in this browser.');
-                      return;
-                    }
-                    if (recognitionRef.current) {
-                      recognitionRef.current.start();
-                      setIsListening(true);
-                    } else {
-                      const rec = new SpeechRecognition();
-                      rec.lang = 'en-US';
-                      rec.interimResults = false;
-                      rec.maxAlternatives = 1;
-                      rec.onresult = (ev: any) => {
-                        const transcript = Array.from(ev.results).map((r: any) => r[0].transcript).join(' ');
-                        setLastTranscript(transcript);
-                        setAskQuestion(transcript);
-                        void askTripQuestion(transcript);
-                      };
-                      rec.onend = () => setIsListening(false);
-                      rec.onerror = (e: any) => { console.error('Speech error', e); setIsListening(false); };
-                      recognitionRef.current = rec;
-                      rec.start();
-                      setIsListening(true);
-                    }
-                  }
-                }}
-                title="Ask a question about this trip by voice"
-              >
-                {isListening ? 'Stop voice' : 'Voice'}
-              </button>
-              <div className="ask-response" aria-live="polite">
-                {lastTranscript && <div className="voice-transcript">You asked: {lastTranscript}</div>}
-                {askAnswer && <div className="voice-answer">{askAnswer}</div>}
+            <details className="trip-more-menu" ref={tripMenuRef}>
+              <summary aria-label="More trip actions">More ▾</summary>
+              <div className="trip-more-menu-list" onClick={closeTripMenu}>
+                <button onClick={() => {
+                  const name = prompt('Trip Name?');
+                  if (name) createNewTrip(name);
+                }}>Create New Trip</button>
+                <button onClick={copyTrip}>Copy Trip</button>
+                {user.id === currentTrip.userId && (
+                  <button onClick={saveCurrentTripAsTemplate}>Save as Template</button>
+                )}
+                <button onClick={handlePrintAllTabs}>Download All Tabs</button>
+                <button onClick={resetTrip}>Reset Items</button>
+                <hr />
+                {user.id === currentTrip.userId ? (
+                  <button onClick={deleteTrip} className="danger">Delete Trip</button>
+                ) : (
+                  <button onClick={leaveTrip} className="danger">Remove Trip</button>
+                )}
               </div>
-            </div>
+            </details>
           </div>
         </div>
 
-        <div className="people-manager">
-          <h3>Packers:</h3>
-          <label className="voice-identity">
-            <span>My packing row</span>
-            <select
-              aria-label="My packing row"
-              value={currentTrip.people.find(person => person.userId === user.id)?.id || ''}
-              onChange={event => setMyPackingPerson(event.target.value)}
-            >
-              <option value="">Not linked</option>
-              {currentTrip.people.map(person => (
-                <option
-                  key={person.id}
-                  value={person.id}
-                  disabled={Boolean(person.userId && person.userId !== user.id)}
-                >
-                  {person.name}{person.userId && person.userId !== user.id ? ' (linked)' : ''}
-                </option>
+        <div className="trip-header-bottom">
+          <div className="people-manager">
+            <h3>Packers</h3>
+            <label className="voice-identity">
+              <span>My packing row</span>
+              <select
+                aria-label="My packing row"
+                value={currentTrip.people.find(person => person.userId === user.id)?.id || ''}
+                onChange={event => setMyPackingPerson(event.target.value)}
+              >
+                <option value="">Not linked</option>
+                {currentTrip.people.map(person => (
+                  <option
+                    key={person.id}
+                    value={person.id}
+                    disabled={Boolean(person.userId && person.userId !== user.id)}
+                  >
+                    {person.name}{person.userId && person.userId !== user.id ? ' (linked)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="people-list">
+              {currentTrip.people.map(p => (
+                <span key={p.id} className="person-tag">
+                  {p.name}
+                  <button
+                    className="remove-person-btn"
+                    onClick={() => removePerson(p.id)}
+                    title={`Remove ${p.name}`}
+                  >
+                    ×
+                  </button>
+                </span>
               ))}
-            </select>
-          </label>
-          <div className="people-list">
-            {currentTrip.people.map(p => (
-              <span key={p.id} className="person-tag">
-                {p.name}
-                <button
-                  className="remove-person-btn"
-                  onClick={() => removePerson(p.id)}
-                  title={`Remove ${p.name}`}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            <button onClick={() => {
-              const name = prompt('Person Name?');
-              if (name) addPerson(name);
-            }}>+ Add Person</button>
+              <button onClick={() => {
+                const name = prompt('Person Name?');
+                if (name) addPerson(name);
+              }}>+ Add Person</button>
+            </div>
+          </div>
+          <div className="voice-controls">
+            <form className="ask-form" onSubmit={event => {
+              event.preventDefault();
+              void askTripQuestion(askQuestion);
+            }}>
+              <input
+                value={askQuestion}
+                onChange={event => setAskQuestion(event.target.value)}
+                placeholder="Ask about this trip"
+                aria-label="Question about this trip"
+                maxLength={500}
+              />
+              <button type="submit" className="voice-btn" disabled={isAsking || !askQuestion.trim()}>
+                {isAsking ? 'Thinking...' : 'Ask'}
+              </button>
+            </form>
+            <button
+              type="button"
+              className={`voice-btn ${isListening ? 'listening' : ''}`}
+              onClick={() => {
+                if (isListening) {
+                  try { recognitionRef.current?.stop(); } catch {};
+                  setIsListening(false);
+                } else {
+                  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                  if (!SpeechRecognition) {
+                    alert('Speech Recognition not supported in this browser.');
+                    return;
+                  }
+                  if (recognitionRef.current) {
+                    recognitionRef.current.start();
+                    setIsListening(true);
+                  } else {
+                    const rec = new SpeechRecognition();
+                    rec.lang = 'en-US';
+                    rec.interimResults = false;
+                    rec.maxAlternatives = 1;
+                    rec.onresult = (ev: any) => {
+                      const transcript = Array.from(ev.results).map((r: any) => r[0].transcript).join(' ');
+                      setLastTranscript(transcript);
+                      setAskQuestion(transcript);
+                      void askTripQuestion(transcript);
+                    };
+                    rec.onend = () => setIsListening(false);
+                    rec.onerror = (e: any) => { console.error('Speech error', e); setIsListening(false); };
+                    recognitionRef.current = rec;
+                    rec.start();
+                    setIsListening(true);
+                  }
+                }
+              }}
+              title="Ask a question about this trip by voice"
+            >
+              {isListening ? 'Stop voice' : 'Voice'}
+            </button>
+            <div className="ask-response" aria-live="polite">
+              {lastTranscript && <div className="voice-transcript">You asked: {lastTranscript}</div>}
+              {askAnswer && <div className="voice-answer">{askAnswer}</div>}
+            </div>
           </div>
         </div>
       </header>
@@ -3444,6 +3493,7 @@ function App() {
         >
           Debrief
         </button>
+        <span className="tabs-divider" aria-hidden="true" />
         {currentTrip.categories.map(cat => (
           <button 
             key={cat.id} 
