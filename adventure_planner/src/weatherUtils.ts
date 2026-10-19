@@ -272,7 +272,7 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     if (aqiArr && aqiArr.length > 0) {
       aqiVal = aqiArr[0].aqi;
     }
-  } catch (e) {
+  } catch {
     // ignore AQI lookup failures
   }
 
@@ -406,7 +406,7 @@ export const fetchAqiForLocationAndRange = async (
       const avg = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
       return { date, aqi: avg };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('AQI fetch error', err);
     // fallback: return empty array of dates
     const startDt = new Date(`${start}T00:00:00Z`);
@@ -437,9 +437,9 @@ export const fetchTripDashboardForecast = async (
         fetchAqiForLocationAndRange(day.location, startRangeDate, endRangeDate).catch(() => []),
       ]);
       return { success: true as const, forecast, aqi };
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`Failed to fetch weather/AQI range for day ${j} location ${day.location}:`, err);
-      return { success: false as const, error: err.message };
+      return { success: false as const, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
@@ -459,11 +459,10 @@ export const fetchTripDashboardForecast = async (
     const AQI_POOR_THRESHOLD = 100; // US AQI >100 considered unhealthy for sensitive groups
 
     for (let j = 0; j < N; j++) {
-      const dayRes = dayForecastResults[j] as any;
+      const dayRes = dayForecastResults[j];
       if (dayRes.success && dayRes.forecast && dayRes.forecast[i]) {
         const item = dayRes.forecast[i];
-        const aqiEntry = (dayRes.aqi && dayRes.aqi[i]) || {};
-        const aqiVal = aqiEntry?.aqi;
+        const aqiVal = dayRes.aqi?.[i]?.aqi;
         const isStormy = isStormyWeatherCode(item.weatherCode);
         const isPoorAir = typeof aqiVal === 'number' && aqiVal > AQI_POOR_THRESHOLD;
         if (isStormy || isPoorAir) {
@@ -476,10 +475,9 @@ export const fetchTripDashboardForecast = async (
           summary: getWeatherSummary(item.weatherCode),
         });
       } else {
-        const aqiEntry = (dayRes.aqi && dayRes.aqi[i]) || {};
         days.push({
           date: getDayDate(startDate, j),
-          aqi: aqiEntry?.aqi,
+          aqi: dayRes.success ? dayRes.aqi?.[i]?.aqi : undefined,
           summary: 'No data',
         });
       }

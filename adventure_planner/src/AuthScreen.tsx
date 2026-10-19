@@ -26,7 +26,7 @@ export function AuthScreen() {
         if (rawTrip) {
           try {
             sessionStorage.setItem('pending_trip_link', decodeURIComponent(rawTrip).trim());
-          } catch {}
+          } catch { /* storage unavailable */ }
         }
       }
 
@@ -42,9 +42,9 @@ export function AuthScreen() {
         },
       });
       if (error) throw error;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Google login failed:', err);
-      setError(err.message || 'Failed to start Google login.');
+      setError((err instanceof Error && err.message) || 'Failed to start Google login.');
       setLoading(false);
     }
   };

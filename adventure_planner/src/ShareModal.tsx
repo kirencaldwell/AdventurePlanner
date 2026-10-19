@@ -40,8 +40,8 @@ export function ShareModal({ tripId, sharedWith, onClose, isOwner, currentUserEm
       onUpdateSharedWith(updatedList);
       setSuccess(`Trip shared with ${targetEmail}! They can now access the trip link.`);
       setNewEmail('');
-    } catch (err: any) {
-      setError(err.message || 'Failed to share trip.');
+    } catch (err: unknown) {
+      setError((err instanceof Error && err.message) || 'Failed to share trip.');
     } finally {
       setLoading(false);
     }
