@@ -1,0 +1,28 @@
+/* Weather tab: reuses the Itinerary tab's strip and detail layout
+   (TripTab.css) and the shared forecast styles (DayForecast.css). */
+
+.wx-detail {
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+}
+
+.wx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wx-links-input {
+  min-height: 4.5rem;
+}
+
+.wx-links-warning {
+  font-size: 0.75rem;
+  color: #b45309;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .wx-detail {
+    grid-template-columns: 1fr;
+  }
+}

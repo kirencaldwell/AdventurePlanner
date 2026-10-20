@@ -16,7 +16,7 @@ import { TripDashboard } from './TripDashboard';
 import { TripHeader } from './TripHeader';
 import { TripTab } from './TripTab';
 import { TripTabsNav } from './TripTabsNav';
-import { WeatherDayCard } from './WeatherDayCard';
+import { DayForecastDetail } from './DayForecast';
 import { WeatherTab } from './WeatherTab';
 import { DEFAULT_STATUSES, INITIAL_CATEGORIES, SAMPLE_GEAR_CLOSET_ITEMS } from './constants';
 import { alertDialog, confirmDialog, promptDialog } from './dialogs';
@@ -26,7 +26,7 @@ import type { AppView } from './tripUtils';
 import { STORAGE_KEYS, calcPersonPackingStats, calculateTripStats, clearTripParamsFromUrl, createDefaultTripDashboardFilters, formatDiscussionString, formatWeight, generateId, getCurrentUsername, getStoredViewState, getTripIdFromUrl, getTripUrl, normalizeTripCategories, normalizeVoiceItemName, parseDiscussionString, parseStravaEmbeds, parseTripNumber, parseVoicePackingUpdate, updateAutomaticDifficultyTag } from './tripUtils';
 import type { GearClosetItem, StatusId, Trip, TripActivity, TripDay } from './types';
 import type { StartingDayForecast, WeatherRow } from './weatherUtils';
-import { fetchTripDashboardForecast, fetchWeatherForDay, getDayDate, getTodayString, isStormyWeatherCode } from './weatherUtils';
+import { fetchTripDashboardForecast, fetchWeatherForDay, getDayDate, getTodayString, hasForecast, isStormyWeatherCode } from './weatherUtils';
 import './App.css';
 import { Analytics } from "@vercel/analytics/react";
 
@@ -2181,7 +2181,16 @@ function App() {
                 <p className="weather-detail-trip-name">{selectedWeatherDetail.trip?.name || 'Trip weather'}</p>
                 <h3>Weather details for {selectedWeatherDetail.row.date}</h3>
               </div>
-              <WeatherDayCard row={selectedWeatherDetail.row} day={selectedWeatherDetail.day} />
+              <p className="weather-detail-location">
+                {selectedWeatherDetail.row.location}
+                {hasForecast(selectedWeatherDetail.row) && selectedWeatherDetail.row.locationElevation != null
+                  && ` · forecast at ${Math.round(selectedWeatherDetail.row.locationElevation * 3.28084).toLocaleString()} ft`}
+              </p>
+              {hasForecast(selectedWeatherDetail.row) ? (
+                <DayForecastDetail row={selectedWeatherDetail.row} weatherLinks={selectedWeatherDetail.day?.weatherLinks} />
+              ) : (
+                <p className="weather-detail-location">Forecast not available yet for this date.</p>
+              )}
             </div>
           </div>
         )}
