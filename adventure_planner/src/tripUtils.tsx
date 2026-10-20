@@ -494,7 +494,7 @@ export interface TripDashboardFilters {
   maxElevation: string;
   minDays: string;
   maxDays: string;
-  tags: string;
+  search: string;
   difficultyTags: string[];
   activityType: string;
   strava: string;
@@ -508,7 +508,7 @@ export const createDefaultTripDashboardFilters = (): TripDashboardFilters => ({
   maxElevation: '',
   minDays: '',
   maxDays: '',
-  tags: '',
+  search: '',
   difficultyTags: [],
   activityType: '',
   strava: '',
@@ -584,4 +584,15 @@ export const getWeatherStatusColor = (weatherStatus: string) => {
   if (weatherStatus === 'Bad') return '#ef4444';
   if (weatherStatus === 'Too Far in the Future') return '#6366f1';
   return '#9ca3af';
+};
+
+export type ActivityKind = 'hike' | 'ski' | 'bike' | 'climb' | 'other';
+
+export const getActivityKind = (activityType: string | undefined): ActivityKind => {
+  const type = (activityType || '').toLowerCase();
+  if (type.includes('ski') || type.includes('snow')) return 'ski';
+  if (/bik|cycl|gravel|mtb/.test(type)) return 'bike';
+  if (type.includes('climb') || type.includes('scramble') || type.includes('mountaineer')) return 'climb';
+  if (/hik|backpack|walk|trail|run|trek/.test(type)) return 'hike';
+  return 'other';
 };

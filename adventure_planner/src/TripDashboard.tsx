@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import type { Trip } from './types';
 import type { StartingDayForecast } from './weatherUtils';
+import { getDayDate, getTodayString } from './weatherUtils';
 import { parseDiscussionString, AUTO_DIFFICULTY_LEVELS, calculateTripStats, createDefaultTripDashboardFilters } from './tripUtils';
 import type { TripDashboardFilters } from './tripUtils';
 import { TripCard } from './TripCard';
 import { TripMapView } from './TripMapView';
+import { CardsIcon, ChevronIcon, MapIcon, PlusIcon, RefreshIcon, SearchIcon, SlidersIcon } from './DashboardIcons';
+import './TripDashboard.css';
 
 type DashboardViewMode = 'list' | 'map';
 const DASHBOARD_VIEW_MODE_KEY = 'adventure-planner-dashboard-view-mode';
@@ -16,6 +19,18 @@ const getStoredDashboardViewMode = (): DashboardViewMode => {
     return 'list';
   }
 };
+
+const formatActivityType = (activityType: string) =>
+  activityType.split(/[-_\s]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+// The last calendar day of a dated trip, as a YYYY-MM-DD string
+const getTripEndDate = (trip: Trip) => getDayDate(trip.startDate as string, Math.max((trip.days?.length ?? 1) - 1, 0));
+
+const ADVANCED_FILTER_KEYS: (keyof TripDashboardFilters)[] = [
+  'minMiles', 'maxMiles', 'minElevation', 'maxElevation', 'minDays', 'maxDays', 'difficultyTags', 'strava', 'debriefComment',
+];
+
+const isFilterSet = (value: string | string[]) => (Array.isArray(value) ? value.length > 0 : value.trim() !== '');
 
 export const TripDashboard = ({
   trips,
@@ -42,10 +57,10 @@ export const TripDashboard = ({
   templateCount: number;
   onOpenTemplates: () => void;
 }) => {
-  const hasActiveFilters = Object.values(filters).some(value =>
-    Array.isArray(value) ? value.length > 0 : value.trim() !== ''
-  );
-  const [filtersOpen, setFiltersOpen] = useState(hasActiveFilters);
+  const hasActiveFilters = Object.values(filters).some(isFilterSet);
+  const advancedFilterCount = ADVANCED_FILTER_KEYS.filter(key => isFilterSet(filters[key])).length;
+  const [filtersOpen, setFiltersOpen] = useState(advancedFilterCount > 0);
+  const [pastOpen, setPastOpen] = useState(false);
   const [viewMode, setViewMode] = useState<DashboardViewMode>(getStoredDashboardViewMode);
   const changeViewMode = (mode: DashboardViewMode) => {
     setViewMode(mode);
@@ -56,7 +71,7 @@ export const TripDashboard = ({
     'ski-touring',
     filters.activityType,
     ...trips.flatMap(trip => (trip.days || []).flatMap(day => (day.activities || []).map(activity => activity.type.trim()))),
-  ].filter(Boolean))).sort((first, second) => first.localeCompare(second));
+  ].filter(Boolean).map(type => type.toLowerCase()))).sort((first, second) => first.localeCompare(second));
   const filteredTrips = trips.filter(trip => {
     const stats = calculateTripStats(trip);
     const matchesRange = (rangeMin: number, rangeMax: number, minimum: string, maximum: string) => {
@@ -64,12 +79,16 @@ export const TripDashboard = ({
       const selectedMax = maximum === '' ? Number.POSITIVE_INFINITY : Number(maximum);
       return rangeMax >= selectedMin && rangeMin <= selectedMax;
     };
-    const normalizedTagQuery = filters.tags.trim().toLowerCase();
-    const matchesTags = !normalizedTagQuery || (trip.tags || []).some(tag => tag.toLowerCase().includes(normalizedTagQuery));
+    const normalizedQuery = filters.search.trim().toLowerCase();
+    const matchesSearch = !normalizedQuery || [
+      trip.name,
+      ...(trip.tags || []),
+      ...(trip.days || []).map(day => day.location || ''),
+    ].some(text => text.toLowerCase().includes(normalizedQuery));
     const matchesDifficultyTags = filters.difficultyTags.length === 0
       || filters.difficultyTags.some(selectedTag => (trip.tags || []).some(tag => tag.toLowerCase() === selectedTag));
     const matchesActivityType = !filters.activityType
-      || (trip.days || []).some(day => (day.activities || []).some(activity => activity.type.toLowerCase() === filters.activityType.toLowerCase()));
+      || (trip.days || []).some(day => (day.activities || []).some(activity => activity.type.trim().toLowerCase() === filters.activityType.toLowerCase()));
     const hasStravaPost = (trip.debriefStravaEmbeds || []).some(embed => embed.trim() !== '');
     const hasDebriefComment = (trip.debriefDiscussions || []).some(discussion => parseDiscussionString(discussion).text.trim() !== '');
     const matchesPresence = (filter: string, isPresent: boolean) => filter === '' || (filter === 'yes' ? isPresent : !isPresent);
@@ -77,12 +96,35 @@ export const TripDashboard = ({
     return matchesRange(stats.mileageMin, stats.mileageMax, filters.minMiles, filters.maxMiles)
       && matchesRange(stats.elevationMin, stats.elevationMax, filters.minElevation, filters.maxElevation)
       && matchesRange(stats.dayCount, stats.dayCount, filters.minDays, filters.maxDays)
-      && matchesTags
+      && matchesSearch
       && matchesDifficultyTags
       && matchesActivityType
       && matchesPresence(filters.strava, hasStravaPost)
       && matchesPresence(filters.debriefComment, hasDebriefComment);
   });
+
+  // Coming up: soonest first. Ideas: most recently edited first. Past: most recent first.
+  const today = getTodayString();
+  const upcomingTrips = filteredTrips
+    .filter(trip => trip.startDate && getTripEndDate(trip) >= today)
+    .sort((first, second) => (first.startDate as string).localeCompare(second.startDate as string));
+  const ideaTrips = filteredTrips
+    .filter(trip => !trip.startDate)
+    .sort((first, second) => second.lastModified - first.lastModified);
+  const pastTrips = filteredTrips
+    .filter(trip => trip.startDate && getTripEndDate(trip) < today)
+    .sort((first, second) => (second.startDate as string).localeCompare(first.startDate as string));
+  const totalCounts = trips.reduce((counts, trip) => {
+    if (!trip.startDate) counts.ideas += 1;
+    else if (getTripEndDate(trip) >= today) counts.upcoming += 1;
+    else counts.past += 1;
+    return counts;
+  }, { upcoming: 0, ideas: 0, past: 0 });
+  const summaryParts = [
+    totalCounts.upcoming > 0 && `${totalCounts.upcoming} coming up`,
+    totalCounts.ideas > 0 && `${totalCounts.ideas} ${totalCounts.ideas === 1 ? 'idea' : 'ideas'}`,
+    totalCounts.past > 0 && `${totalCounts.past} done`,
+  ].filter(Boolean);
 
   const renderTripCard = (trip: Trip) => (
     <TripCard
@@ -93,6 +135,16 @@ export const TripDashboard = ({
       onOpenWeatherDetail={onOpenWeatherDetail}
       onCopyTripLink={onCopyTripLink}
     />
+  );
+
+  const renderSection = (id: string, title: string, hint: string, sectionTrips: Trip[]) => sectionTrips.length > 0 && (
+    <section className="dash-section" aria-labelledby={id}>
+      <div className="dash-section-heading">
+        <h2 id={id}>{title}</h2>
+        <span>{hint}</span>
+      </div>
+      <div className="dash-grid">{sectionTrips.map(renderTripCard)}</div>
+    </section>
   );
 
   const updateFilter = (name: keyof typeof filters, value: string) => {
@@ -108,15 +160,22 @@ export const TripDashboard = ({
     }));
   };
 
+  const showPast = pastOpen || (hasActiveFilters && upcomingTrips.length + ideaTrips.length === 0);
+
   return (
-  <div className="dashboard-container">
-    <header className="dashboard-header">
-      <h1>My Trips</h1>
-      <div className="dashboard-actions">
+  <div className="dashboard-container dash">
+    <header className="dash-header">
+      <div className="dash-title">
+        <h1>Trips</h1>
+        {summaryParts.length > 0 && <p>{summaryParts.join(', ')}</p>}
+      </div>
+      <div className="dash-header-actions">
         {trips.length > 0 && (
-          <button onClick={onRefreshAllWeather} className="refresh-weather-btn">🔄 Refresh Weather</button>
+          <button type="button" onClick={onRefreshAllWeather} className="dash-ghost-btn">
+            <RefreshIcon size={16} /> Refresh weather
+          </button>
         )}
-        <button onClick={onNewTrip} className="new-trip-btn">+ New Trip</button>
+        <button type="button" onClick={onNewTrip} className="dash-primary-btn"><PlusIcon /> New trip</button>
       </div>
     </header>
     {trips.length === 0 ? (
@@ -142,73 +201,85 @@ export const TripDashboard = ({
         </ul>
       </section>
     ) : (<>
-    <section className={`trip-filter-panel ${filtersOpen ? 'open' : 'collapsed'}`} aria-labelledby="trip-filter-heading">
-      <div className="trip-filter-header">
-        <h2 id="trip-filter-heading">
+    <div className="dash-toolbar">
+      <label className="dash-search">
+        <SearchIcon />
+        <span className="visually-hidden">Search trips</span>
+        <input
+          type="search"
+          placeholder="Search trips, places, tags"
+          value={filters.search}
+          onChange={event => updateFilter('search', event.target.value)}
+        />
+      </label>
+      <div className="dash-chips" role="group" aria-label="Activity">
+        <button type="button" className="dash-chip" aria-pressed={!filters.activityType} onClick={() => updateFilter('activityType', '')}>
+          All
+        </button>
+        {activityTypes.map(activityType => (
           <button
             type="button"
-            className="trip-filter-toggle"
-            aria-expanded={filtersOpen}
-            aria-controls="trip-filter-grid"
-            onClick={() => setFiltersOpen(open => !open)}
+            key={activityType}
+            className="dash-chip"
+            aria-pressed={filters.activityType.toLowerCase() === activityType}
+            onClick={() => updateFilter('activityType', filters.activityType.toLowerCase() === activityType ? '' : activityType)}
           >
-            <span className="trip-filter-chevron" aria-hidden="true">{filtersOpen ? '▾' : '▸'}</span>
-            Filter trips
-            {hasActiveFilters && <span className="trip-filter-active-dot">Active</span>}
+            {formatActivityType(activityType)}
           </button>
-        </h2>
-        <div className="trip-filter-actions">
-          <span role="status">{filteredTrips.length} of {trips.length} trips</span>
-          <button type="button" onClick={() => onFiltersChange(() => createDefaultTripDashboardFilters())} disabled={!hasActiveFilters}>
-            Clear filters
-          </button>
-        </div>
+        ))}
+        <button
+          type="button"
+          className="dash-chip"
+          aria-expanded={filtersOpen}
+          aria-controls="dash-more-filters"
+          onClick={() => setFiltersOpen(open => !open)}
+        >
+          <SlidersIcon /> More filters
+          {advancedFilterCount > 0 && <span className="dash-chip-count">{advancedFilterCount}</span>}
+        </button>
       </div>
-      {filtersOpen && <div className="trip-filter-grid" id="trip-filter-grid">
-        <fieldset className="trip-filter-range">
+      <div className="dash-view-toggle" role="group" aria-label="Show trips as">
+        <button type="button" aria-pressed={viewMode === 'list'} aria-label="Cards" onClick={() => changeViewMode('list')}><CardsIcon /> Cards</button>
+        <button type="button" aria-pressed={viewMode === 'map'} aria-label="Map" onClick={() => changeViewMode('map')}><MapIcon /> Map</button>
+      </div>
+    </div>
+    {filtersOpen && (
+      <div className="dash-more-filters" id="dash-more-filters">
+        <fieldset className="dash-range">
           <legend>Miles</legend>
-          <label>Min<input type="number" min="0" step="0.1" value={filters.minMiles} onChange={event => updateFilter('minMiles', event.target.value)} /></label>
-          <label>Max<input type="number" min="0" step="0.1" value={filters.maxMiles} onChange={event => updateFilter('maxMiles', event.target.value)} /></label>
+          <label><span className="visually-hidden">Minimum miles</span><input type="number" min="0" step="0.1" placeholder="Min" value={filters.minMiles} onChange={event => updateFilter('minMiles', event.target.value)} /></label>
+          <span aria-hidden="true">to</span>
+          <label><span className="visually-hidden">Maximum miles</span><input type="number" min="0" step="0.1" placeholder="Max" value={filters.maxMiles} onChange={event => updateFilter('maxMiles', event.target.value)} /></label>
         </fieldset>
-        <fieldset className="trip-filter-range">
+        <fieldset className="dash-range">
           <legend>Elevation gain (ft)</legend>
-          <label>Min<input type="number" min="0" step="100" value={filters.minElevation} onChange={event => updateFilter('minElevation', event.target.value)} /></label>
-          <label>Max<input type="number" min="0" step="100" value={filters.maxElevation} onChange={event => updateFilter('maxElevation', event.target.value)} /></label>
+          <label><span className="visually-hidden">Minimum elevation gain</span><input type="number" min="0" step="100" placeholder="Min" value={filters.minElevation} onChange={event => updateFilter('minElevation', event.target.value)} /></label>
+          <span aria-hidden="true">to</span>
+          <label><span className="visually-hidden">Maximum elevation gain</span><input type="number" min="0" step="100" placeholder="Max" value={filters.maxElevation} onChange={event => updateFilter('maxElevation', event.target.value)} /></label>
         </fieldset>
-        <fieldset className="trip-filter-range">
+        <fieldset className="dash-range">
           <legend>Days</legend>
-          <label>Min<input type="number" min="0" step="1" value={filters.minDays} onChange={event => updateFilter('minDays', event.target.value)} /></label>
-          <label>Max<input type="number" min="0" step="1" value={filters.maxDays} onChange={event => updateFilter('maxDays', event.target.value)} /></label>
+          <label><span className="visually-hidden">Minimum days</span><input type="number" min="0" step="1" placeholder="Min" value={filters.minDays} onChange={event => updateFilter('minDays', event.target.value)} /></label>
+          <span aria-hidden="true">to</span>
+          <label><span className="visually-hidden">Maximum days</span><input type="number" min="0" step="1" placeholder="Max" value={filters.maxDays} onChange={event => updateFilter('maxDays', event.target.value)} /></label>
         </fieldset>
-        <label className="trip-filter-search">
-          Search tags
-          <input type="search" placeholder="Search tags" value={filters.tags} onChange={event => updateFilter('tags', event.target.value)} />
-        </label>
-        <fieldset className="trip-filter-tags">
-          <legend>Difficulty tags</legend>
-          {AUTO_DIFFICULTY_LEVELS.map(({ tag }) => (
-            <label key={tag}>
-              <input
-                type="checkbox"
-                checked={filters.difficultyTags.includes(tag)}
-                onChange={() => toggleDifficultyTag(tag)}
-              />
-              {tag}
-            </label>
-          ))}
-        </fieldset>
-        <label className="trip-filter-select">
-          Activity type
-          <select value={filters.activityType} onChange={event => updateFilter('activityType', event.target.value)}>
-            <option value="">Any activity</option>
-            {activityTypes.map(activityType => (
-              <option key={activityType} value={activityType}>
-                {activityType.split(/[-_\s]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-              </option>
+        <fieldset className="dash-difficulty">
+          <legend>Difficulty</legend>
+          <div className="dash-chips">
+            {AUTO_DIFFICULTY_LEVELS.map(({ tag }) => (
+              <button
+                type="button"
+                key={tag}
+                className="dash-chip small"
+                aria-pressed={filters.difficultyTags.includes(tag)}
+                onClick={() => toggleDifficultyTag(tag)}
+              >
+                {tag}
+              </button>
             ))}
-          </select>
-        </label>
-        <label className="trip-filter-select">
+          </div>
+        </fieldset>
+        <label className="dash-select">
           Strava post
           <select value={filters.strava} onChange={event => updateFilter('strava', event.target.value)}>
             <option value="">Any</option>
@@ -216,7 +287,7 @@ export const TripDashboard = ({
             <option value="no">No post</option>
           </select>
         </label>
-        <label className="trip-filter-select">
+        <label className="dash-select">
           Debrief comment
           <select value={filters.debriefComment} onChange={event => updateFilter('debriefComment', event.target.value)}>
             <option value="">Any</option>
@@ -224,26 +295,37 @@ export const TripDashboard = ({
             <option value="no">No comment</option>
           </select>
         </label>
-      </div>}
-    </section>
-    <div className="dashboard-view-toggle" role="group" aria-label="Show trips as">
-      <button type="button" aria-pressed={viewMode === 'list'} onClick={() => changeViewMode('list')}>☰ List</button>
-      <button type="button" aria-pressed={viewMode === 'map'} onClick={() => changeViewMode('map')}>🗺️ Map</button>
-    </div>
+      </div>
+    )}
+    {hasActiveFilters && (
+      <div className="dash-filter-status" role="status">
+        Showing {filteredTrips.length} of {trips.length} trips
+        <button type="button" onClick={() => onFiltersChange(() => createDefaultTripDashboardFilters())}>Clear filters</button>
+      </div>
+    )}
     {viewMode === 'map' ? (
       <TripMapView
         trips={filteredTrips}
         renderTripCard={renderTripCard}
       />
-    ) : (
-    <div className="trip-list">
-      {filteredTrips.length === 0 ? (
-        <div className="trip-filter-empty" role="status">
-          No trips match these filters.
-        </div>
-      ) : filteredTrips.map(renderTripCard)}
-    </div>
-    )}
+    ) : filteredTrips.length === 0 ? (
+      <div className="trip-filter-empty" role="status">
+        No trips match these filters.
+      </div>
+    ) : (<>
+      {renderSection('dash-upcoming', 'Coming up', 'Soonest first', upcomingTrips)}
+      {renderSection('dash-ideas', 'Ideas', 'No date yet', ideaTrips)}
+      {pastTrips.length > 0 && (
+        <section className="dash-section" aria-labelledby="dash-past">
+          <h2 className="dash-past-heading" id="dash-past">
+            <button type="button" aria-expanded={showPast} onClick={() => setPastOpen(!showPast)}>
+              <ChevronIcon open={showPast} /> Past trips ({pastTrips.length})
+            </button>
+          </h2>
+          {showPast && <div className="dash-grid">{pastTrips.map(renderTripCard)}</div>}
+        </section>
+      )}
+    </>)}
     </>)}
   </div>
   );
