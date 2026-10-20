@@ -37,6 +37,12 @@ export const WeatherDayCard = ({
     </div>
 
     <div className="weather-card-details">
+      {row.locationElevation != null && (
+        <div className="weather-detail-row">
+          <span className="detail-label">Forecast Elevation:</span>
+          <span className="detail-value">{formatElevation(row.locationElevation)}</span>
+        </div>
+      )}
       <div className="weather-detail-row">
         <span className="detail-label">Sea Level:</span>
         <span className="detail-value">{row.highLow[0]?.high} / {row.highLow[0]?.low}</span>
@@ -83,8 +89,17 @@ export const WeatherDayCard = ({
       </div>
       <div className="weather-detail-row">
         <span className="detail-label">Precipitation:</span>
-        <span className="detail-value">{formatPrecip(row.precipitation)}</span>
+        <span className="detail-value">
+          {formatPrecip(row.precipitation)}
+          {row.precipitationProbability != null && ` (${row.precipitationProbability}% chance)`}
+        </span>
       </div>
+      {row.precipitationSource && (
+        <div className="weather-detail-row">
+          <span className="detail-label">Precip Source:</span>
+          <span className="detail-value">{row.precipitationSource}</span>
+        </div>
+      )}
       <div className="weather-detail-row">
         <span className="detail-label">Snowfall:</span>
         <span className="detail-value">{formatSnow(row.snowfall)}</span>
