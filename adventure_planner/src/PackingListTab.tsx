@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import type { CSSProperties, Dispatch, KeyboardEvent as ReactKeyboardEvent, SetStateAction } from 'react';
+import { createPortal } from 'react-dom';
 import { DEFAULT_STATUSES } from './constants';
 import { calcPersonPackingStats, formatWeight, renderTextWithLinks, toOz } from './tripUtils';
 import type { Category, GearClosetItem, Item, Person, StatusId, Trip } from './types';
@@ -37,13 +38,20 @@ interface PackingListTabProps {
 // Statuses that count as packed
 const PACKED_STATUSES: StatusId[] = ['fully-packed', 'in-car'];
 
-// One-tap statuses shown on every row; the rest live behind "More"
-const QUICK_STATUSES: { id: StatusId; label: string }[] = [
-  { id: 'not-packed', label: 'Not packed' },
-  { id: 'set-aside', label: 'Set aside' },
-  { id: 'fully-packed', label: 'Packed' },
-  { id: 'in-car', label: 'In car' },
-];
+// Order of the wedges on the status wheel, clockwise from the top
+const WHEEL_STATUSES: StatusId[] = ['not-packed', 'set-aside', 'fully-packed', 'in-car', 'needs-charging', 'need-to-buy', 'not-bringing'];
+
+const STATUS_COLORS: Record<string, { soft: string; strong: string }> = {
+  'not-packed': { soft: '#f1f5f9', strong: '#64748b' },
+  'set-aside': { soft: '#fef3c7', strong: '#d97706' },
+  'fully-packed': { soft: '#dcfce7', strong: '#16a34a' },
+  'in-car': { soft: '#dbeafe', strong: '#2563eb' },
+  'needs-charging': { soft: '#ede9fe', strong: '#7c3aed' },
+  'need-to-buy': { soft: '#ffedd5', strong: '#ea580c' },
+  'not-bringing': { soft: '#f3f4f6', strong: '#6b7280' },
+};
+
+const statusColors = (statusId: StatusId) => STATUS_COLORS[statusId] || STATUS_COLORS['not-packed'];
 
 const statusLabel = (statusId: StatusId) =>
   DEFAULT_STATUSES.find(s => s.id === statusId)?.label || statusId;
@@ -156,8 +164,6 @@ export function PackingListTab({
     const carrier = person ? personName(item.personCarriedBy?.[person.id]) : undefined;
     const isPacked = PACKED_STATUSES.includes(status);
     const isSkipped = status === 'not-bringing';
-    // Statuses behind "More" get a pill so they're visible without opening the menu
-    const showPill = person && !QUICK_STATUSES.some(s => s.id === status);
 
     const meta: string[] = [];
     if (weightOz !== null) meta.push(formatWeight(weightOz * qty));
@@ -171,6 +177,13 @@ export function PackingListTab({
 
     return (
       <li key={item.id} className={`pk-row ${isPacked || isSkipped ? 'pk-row-done' : ''}`}>
+        {person && (
+          <StatusButton
+            itemName={item.name}
+            status={status}
+            onChange={statusId => updateStatus(activeCategory.id, item.id, person.id, statusId)}
+          />
+        )}
         <button type="button" className="pk-row-main" onClick={() => setOpenItemId(item.id)} title="Show details">
           <span className="pk-row-text">
             <span className="pk-row-name">{item.name}</span>
@@ -180,16 +193,8 @@ export function PackingListTab({
               </span>
             )}
           </span>
-          {showPill && <span className={`pk-pill pk-status-${status}`}>{statusLabel(status)}</span>}
           <span className="pk-chevron" aria-hidden="true">›</span>
         </button>
-        {person && (
-          <StatusStrip
-            itemName={item.name}
-            status={status}
-            onChange={statusId => updateStatus(activeCategory.id, item.id, person.id, statusId)}
-          />
-        )}
       </li>
     );
   };
@@ -380,79 +385,175 @@ export function PackingListTab({
   );
 }
 
-interface StatusStripProps {
+interface StatusButtonProps {
   itemName: string;
   status: StatusId;
   onChange: (statusId: StatusId) => void;
 }
 
-function StatusStrip({ itemName, status, onChange }: StatusStripProps) {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
-  const isQuick = QUICK_STATUSES.some(s => s.id === status);
-  const moreStatuses = DEFAULT_STATUSES.filter(s => !QUICK_STATUSES.some(q => q.id === s.id));
+// The row's status pill; tapping it opens the status wheel around it
+function StatusButton({ itemName, status, onChange }: StatusButtonProps) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const colors = statusColors(status);
 
-  useEffect(() => {
-    if (!moreOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMoreOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [moreOpen]);
+  const close = () => {
+    setAnchor(null);
+    buttonRef.current?.focus();
+  };
 
   return (
-    <div className="pk-strip" role="group" aria-label={`Status of ${itemName}`}>
-      {QUICK_STATUSES.map(s => (
-        <button
-          key={s.id}
-          type="button"
-          className={`pk-strip-btn ${status === s.id ? `active pk-status-${s.id}` : ''}`}
-          aria-pressed={status === s.id}
-          onClick={() => onChange(s.id)}
-        >
-          {s.label}
-        </button>
-      ))}
-      <div className="pk-strip-more" ref={moreRef}>
-        <button
-          type="button"
-          className={`pk-strip-btn ${!isQuick ? `active pk-status-${status}` : ''}`}
-          aria-haspopup="menu"
-          aria-expanded={moreOpen}
-          aria-label={isQuick ? 'More statuses' : `${statusLabel(status)}, more statuses`}
-          onClick={() => setMoreOpen(open => !open)}
-        >
-          ⋯
-        </button>
-        {moreOpen && (
-          <div className="pk-menu-panel pk-strip-menu" role="menu">
-            {moreStatuses.map(s => (
-              <button
-                key={s.id}
-                type="button"
-                role="menuitem"
-                className={status === s.id ? 'active' : ''}
-                onClick={() => {
-                  onChange(s.id);
-                  setMoreOpen(false);
-                }}
-              >
-                <span className={`pk-dot pk-status-${s.id}`} aria-hidden="true" />
-                {s.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="pk-status-btn"
+        style={{ '--pk-soft': colors.soft, '--pk-strong': colors.strong } as CSSProperties}
+        aria-haspopup="menu"
+        aria-expanded={Boolean(anchor)}
+        aria-label={`${itemName}: ${statusLabel(status)}. Change status`}
+        onClick={e => setAnchor(e.currentTarget.getBoundingClientRect())}
+      >
+        <span className="pk-status-btn-dot" aria-hidden="true" />
+        <span className="pk-status-btn-label">{statusLabel(status)}</span>
+      </button>
+      {anchor && (
+        <StatusWheel
+          anchor={anchor}
+          itemName={itemName}
+          status={status}
+          onPick={statusId => {
+            onChange(statusId);
+            close();
+          }}
+          onClose={close}
+        />
+      )}
+    </>
+  );
+}
+
+const WHEEL_RADIUS = 120;
+const WHEEL_HOLE = 38;
+const WHEEL_MARGIN = 8;
+
+const polar = (radius: number, angle: number) => [
+  WHEEL_RADIUS + radius * Math.cos(angle),
+  WHEEL_RADIUS + radius * Math.sin(angle),
+];
+
+const wedgePath = (start: number, end: number) => {
+  const [ox1, oy1] = polar(WHEEL_RADIUS - 2, start);
+  const [ox2, oy2] = polar(WHEEL_RADIUS - 2, end);
+  const [ix1, iy1] = polar(WHEEL_HOLE, end);
+  const [ix2, iy2] = polar(WHEEL_HOLE, start);
+  return `M ${ox1} ${oy1} A ${WHEEL_RADIUS - 2} ${WHEEL_RADIUS - 2} 0 0 1 ${ox2} ${oy2} L ${ix1} ${iy1} A ${WHEEL_HOLE} ${WHEEL_HOLE} 0 0 0 ${ix2} ${iy2} Z`;
+};
+
+interface StatusWheelProps {
+  anchor: DOMRect;
+  itemName: string;
+  status: StatusId;
+  onPick: (statusId: StatusId) => void;
+  onClose: () => void;
+}
+
+function StatusWheel({ anchor, itemName, status, onPick, onClose }: StatusWheelProps) {
+  const wedgeRefs = useRef<(SVGGElement | null)[]>([]);
+  const onCloseRef = useRef(onClose);
+  const statuses = WHEEL_STATUSES.filter(id => DEFAULT_STATUSES.some(s => s.id === id));
+  const step = (Math.PI * 2) / statuses.length;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const current = statuses.indexOf(status);
+    wedgeRefs.current[current >= 0 ? current : 0]?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseRef.current();
+    };
+    const onScroll = () => onCloseRef.current();
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+    // Focus the current status once when the wheel opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Center the wheel on the button, kept inside the viewport
+  const size = WHEEL_RADIUS * 2;
+  const clamp = (value: number, max: number) =>
+    Math.min(Math.max(value, WHEEL_RADIUS + WHEEL_MARGIN), Math.max(WHEEL_RADIUS + WHEEL_MARGIN, max - WHEEL_RADIUS - WHEEL_MARGIN));
+  const cx = clamp(anchor.left + anchor.width / 2, window.innerWidth);
+  const cy = clamp(anchor.top + anchor.height / 2, window.innerHeight);
+
+  const onWedgeKeyDown = (e: ReactKeyboardEvent, index: number, statusId: StatusId) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onPick(statusId);
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+      wedgeRefs.current[(index + delta + statuses.length) % statuses.length]?.focus();
+    } else if (e.key === 'Tab') {
+      onClose();
+    }
+  };
+
+  return createPortal(
+    <div className="pk-wheel-scrim" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <svg
+        className="pk-wheel"
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        style={{ left: cx - WHEEL_RADIUS, top: cy - WHEEL_RADIUS }}
+        role="menu"
+        aria-label={`Status for ${itemName}`}
+      >
+        {statuses.map((statusId, index) => {
+          const start = -Math.PI / 2 - step / 2 + index * step;
+          const mid = start + step / 2;
+          const [lx, ly] = polar((WHEEL_RADIUS + WHEEL_HOLE) / 2 + 4, mid);
+          const words = statusLabel(statusId).split(' ');
+          const colors = statusColors(statusId);
+          const isCurrent = statusId === status;
+          return (
+            <g
+              key={statusId}
+              ref={el => { wedgeRefs.current[index] = el; }}
+              className={`pk-wedge ${isCurrent ? 'current' : ''}`}
+              style={{ '--pk-soft': colors.soft, '--pk-strong': colors.strong } as CSSProperties}
+              role="menuitemradio"
+              aria-checked={isCurrent}
+              aria-label={statusLabel(statusId)}
+              tabIndex={0}
+              onClick={() => onPick(statusId)}
+              onKeyDown={e => onWedgeKeyDown(e, index, statusId)}
+            >
+              <path d={wedgePath(start, start + step)} />
+              <text x={lx} y={ly - (words.length - 1) * 6.5} textAnchor="middle" dominantBaseline="middle">
+                {words.map((word, i) => (
+                  <tspan key={i} x={lx} dy={i === 0 ? 0 : 13}>{word}</tspan>
+                ))}
+              </text>
+            </g>
+          );
+        })}
+        <g className="pk-wheel-center" onClick={onClose} aria-hidden="true">
+          <circle cx={WHEEL_RADIUS} cy={WHEEL_RADIUS} r={WHEEL_HOLE - 5} />
+          <text x={WHEEL_RADIUS} y={WHEEL_RADIUS} textAnchor="middle" dominantBaseline="central">✕</text>
+        </g>
+      </svg>
+    </div>,
+    document.body,
   );
 }
 

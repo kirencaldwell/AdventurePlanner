@@ -1413,12 +1413,14 @@ function App() {
                 personStatuses: updatedStatuses,
               };
             } else {
+              // Group gear assignments marked most people "not bringing", so start everyone over at not packed
               return {
                 ...item,
                 isGroupGear: false,
                 broughtByPersonId: undefined,
                 carriedByPersonId: undefined,
                 forPersonIds: undefined,
+                personStatuses: {},
               };
             }
           }),
