@@ -2,16 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import './TripTab.css';
 import { DayForecastDetail, DayForecastFlags, DayForecastTemps } from './DayForecast';
-import { calcPersonPackingStats, calculateTripStats, formatTripStatNumber, formatWeight, parseTripNumber, renderTextWithLinks } from './tripUtils';
+import { formatTripStatNumber, parseTripNumber, renderTextWithLinks } from './tripUtils';
 import { getDayDate, hasForecast } from './weatherUtils';
 import type { WeatherRow } from './weatherUtils';
-import type { GearClosetItem, Trip, TripActivity, TripDay } from './types';
+import type { Trip, TripActivity, TripDay } from './types';
 
 interface TripTabProps {
   currentTrip: Trip;
   weatherRows: WeatherRow[];
   updateStartDate: (date: string) => void;
-  gearCloset: GearClosetItem[];
   removeTripTag: (tagToRemove: string) => void;
   addTripTag: () => void;
   tripTagInput: string;
@@ -73,7 +72,6 @@ export function TripTab({
   currentTrip,
   weatherRows,
   updateStartDate,
-  gearCloset,
   removeTripTag,
   addTripTag,
   tripTagInput,
@@ -98,10 +96,6 @@ export function TripTab({
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   const selectedTileRef = useRef<HTMLButtonElement>(null);
   const days = currentTrip.days || [];
-  const stats = calculateTripStats(currentTrip);
-  const packingStats = currentTrip.people.length > 0 ? calcPersonPackingStats(currentTrip, undefined, gearCloset) : [];
-  const hasPackingItems = packingStats.some(personStats => personStats.totalCount > 0);
-  const lastDate = getCalendarDate(currentTrip.startDate, Math.max(days.length - 1, 0));
   const nextDate = getCalendarDate(currentTrip.startDate, days.length);
 
   // Weather rows are keyed by day position; ignore a row whose location no
@@ -391,7 +385,7 @@ export function TripTab({
 
   return (
     <div className="itin-panel">
-      <section className="itin-overview" aria-label="Trip overview">
+      <section className="itin-overview" aria-label="Start date and tags">
         <div className="itin-stats">
           <label className="itin-stat itin-start-date">
             <span className="itin-stat-label">Starts</span>
@@ -402,52 +396,7 @@ export function TripTab({
               onChange={(e) => updateStartDate(e.target.value)}
             />
           </label>
-          {lastDate && days.length > 1 && (
-            <div className="itin-stat">
-              <span className="itin-stat-label">Ends</span>
-              <span className="itin-stat-value">{lastDate.full}</span>
-            </div>
-          )}
-          <div className="itin-stat">
-            <span className="itin-stat-label">Length</span>
-            <span className="itin-stat-value">{days.length} {days.length === 1 ? 'day' : 'days'}</span>
-          </div>
-          {stats.mileageMax > 0 && (
-            <div className="itin-stat">
-              <span className="itin-stat-label">Distance</span>
-              <span className="itin-stat-value">{stats.mileageRange}</span>
-            </div>
-          )}
-          {stats.elevationMax > 0 && (
-            <div className="itin-stat">
-              <span className="itin-stat-label">Gain</span>
-              <span className="itin-stat-value">+{stats.elevationRange}</span>
-            </div>
-          )}
         </div>
-
-        {hasPackingItems && (
-          <div className="itin-packing" aria-label="Packing progress">
-            {packingStats.map(personStats => {
-              const person = currentTrip.people.find(p => p.id === personStats.personId);
-              if (!person) return null;
-              return (
-                <div
-                  key={personStats.personId}
-                  className="itin-packer"
-                  title={`${personStats.packedCount}/${personStats.totalCount} items · Base ${formatWeight(personStats.baseWeightOz)} · Worn ${formatWeight(personStats.wornWeightOz)} · Food ${formatWeight(personStats.foodWeightOz)}`}
-                >
-                  <span className="itin-packer-name">{person.name}</span>
-                  <span className="itin-packer-track">
-                    <i style={{ width: `${personStats.packedPercent}%` }} />
-                  </span>
-                  <span className="itin-packer-pct">{personStats.packedPercent}%</span>
-                  <span className="itin-packer-weight">{formatWeight(personStats.plannedWeightOz)}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
 
         <div className="itin-tags">
           {(currentTrip.tags || []).map(tag => (

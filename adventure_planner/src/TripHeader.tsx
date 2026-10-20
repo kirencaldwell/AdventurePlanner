@@ -1,7 +1,25 @@
+import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction, RefObject } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { promptDialog } from './dialogs';
-import type { Trip } from './types';
+import { getTripDateRange } from './tripUtils';
+import type { Person, Trip } from './types';
+import {
+  CalendarIcon,
+  ChatIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  LinkIcon,
+  MicIcon,
+  MoreIcon,
+  MountainIcon,
+  PlusIcon,
+  RouteIcon,
+  SendIcon,
+  ShareIcon,
+} from './TripIcons';
+import './TripHeader.css';
 
 interface TripHeaderProps {
   navigateToDashboard: () => void;
@@ -37,6 +55,18 @@ interface TripHeaderProps {
   askAnswer: string;
 }
 
+const AVATAR_COLORS = ['#e7c27d', '#9cc5e8', '#e8a39c', '#b5d6a7', '#c9b6e4', '#f0b98a'];
+
+const avatarColor = (person: Person) => {
+  let hash = 0;
+  for (const char of person.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+};
+
+const initial = (name: string) => name.trim().charAt(0).toUpperCase() || '?';
+
+const MAX_AVATARS = 4;
+
 export function TripHeader({
   navigateToDashboard,
   openTemplates,
@@ -71,36 +101,90 @@ export function TripHeader({
   askAnswer,
 }: TripHeaderProps) {
   const isTemplate = currentTrip.isTemplate === true;
+  const peopleMenuRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (peopleMenuRef.current?.open && !peopleMenuRef.current.contains(event.target as Node)) {
+        peopleMenuRef.current.open = false;
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && peopleMenuRef.current?.open) {
+        peopleMenuRef.current.open = false;
+      }
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
+
+  const people = currentTrip.people;
+  const visiblePeople = people.slice(0, MAX_AVATARS);
+  const hiddenPeopleCount = people.length - visiblePeople.length;
+  const myPersonId = people.find(person => person.userId === user.id)?.id || '';
+  const peopleLabel = people.length > 0
+    ? `Packers: ${people.map(person => person.name).join(', ')}. Manage packers`
+    : 'Add packers';
+
+  const dayLabel = `${tripStats.dayCount} ${tripStats.dayCount === 1 ? 'day' : 'days'}`;
+
+  const promptAddPerson = async () => {
+    const name = (await promptDialog({
+      title: 'Add a packer',
+      label: 'Name',
+      placeholder: 'e.g. Sam',
+      confirmLabel: 'Add',
+    }))?.trim();
+    if (name) addPerson(name);
+  };
 
   return (
-    <header className="trip-header">
-      <div className="trip-header-top">
-        {isTemplate ? (
-          <>
-            <button onClick={openTemplates} className="back-to-list-btn">← Templates</button>
-            <span className="template-editing-note">Editing template. New trips made from it will start with these changes.</span>
-          </>
-        ) : (
-          <>
-            <button onClick={navigateToDashboard} className="back-to-list-btn">← All Trips</button>
-            <select
-              className="trip-switcher"
-              aria-label="Switch trip"
-              value={currentTrip.id}
-              onChange={(e) => setCurrentTripId(e.target.value)}
-            >
-              {trips.filter(t => !t.isTemplate).map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </>
-        )}
-      </div>
-      <div className="trip-info">
-        <div className="trip-title-block">
-          <div className="trip-title-wrapper">
-            <h1 
-              contentEditable 
+    <header className={`trip-hero ${isTemplate ? 'is-template' : ''}`}>
+      <svg className="trip-hero-contours" aria-hidden="true" viewBox="0 0 1280 260" preserveAspectRatio="xMaxYMid slice" fill="none">
+        <ellipse cx="1060" cy="150" rx="50" ry="24" />
+        <ellipse cx="1060" cy="150" rx="120" ry="60" />
+        <ellipse cx="1060" cy="150" rx="190" ry="100" />
+        <ellipse cx="1060" cy="150" rx="260" ry="140" />
+        <ellipse cx="1060" cy="150" rx="330" ry="180" />
+        <ellipse cx="1060" cy="150" rx="400" ry="220" />
+      </svg>
+      <div className="trip-hero-inner">
+        <div className="trip-breadcrumb">
+          {isTemplate ? (
+            <>
+              <button type="button" className="trip-breadcrumb-link" onClick={openTemplates}>Templates</button>
+              <span aria-hidden="true">/</span>
+              <span className="trip-breadcrumb-current">Editing template</span>
+            </>
+          ) : (
+            <>
+              <button type="button" className="trip-breadcrumb-link" onClick={navigateToDashboard}>Trips</button>
+              <span aria-hidden="true">/</span>
+              <span className="trip-switcher-wrap">
+                <select
+                  className="trip-switcher"
+                  aria-label="Switch trip"
+                  value={currentTrip.id}
+                  onChange={(e) => setCurrentTripId(e.target.value)}
+                >
+                  {trips.filter(t => !t.isTemplate).map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <ChevronDownIcon size={14} />
+              </span>
+            </>
+          )}
+        </div>
+
+        <div className="trip-hero-main">
+          <div className="trip-hero-title">
+            <h1
+              contentEditable
               suppressContentEditableWarning
               onBlur={(e) => updateTripName(e.currentTarget.textContent || currentTrip.name)}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
@@ -108,120 +192,141 @@ export function TripHeader({
             >
               {currentTrip.name}
             </h1>
-            <span className="edit-hint" aria-hidden="true">✎</span>
+            {isTemplate ? (
+              <p className="trip-hero-note">New trips made from this template start with these changes.</p>
+            ) : (
+              <ul className="trip-meta" aria-label="Trip stats">
+                <li>
+                  <CalendarIcon />
+                  {currentTrip.startDate ? `${getTripDateRange(currentTrip.startDate, tripStats.dayCount)} · ${dayLabel}` : dayLabel}
+                </li>
+                {tripStats.mileageMax > 0 && <li><RouteIcon />{tripStats.mileageRange}</li>}
+                {tripStats.elevationMax > 0 && <li><MountainIcon />{tripStats.elevationRange} gain</li>}
+              </ul>
+            )}
           </div>
-          <div className="trip-stats" aria-label="Trip stats">
-            <div className="trip-stat">
-              <span className="trip-stat-label">Days</span>
-              <strong>{tripStats.dayCount}</strong>
-            </div>
-            <div className="trip-stat">
-              <span className="trip-stat-label">Miles</span>
-              <strong>{tripStats.mileageRange}</strong>
-            </div>
-            <div className="trip-stat">
-              <span className="trip-stat-label">Elevation</span>
-              <strong>{tripStats.elevationRange}</strong>
-            </div>
-          </div>
-        </div>
-        {isTemplate ? (
-          <div className="trip-actions">
-            <button type="button" className="share-btn-accent" onClick={openTemplates}>Done</button>
-          </div>
-        ) : (
-          <div className="trip-actions">
-            <button onClick={() => setIsShareModalOpen(true)} className="share-btn-accent">Share Trip</button>
-            <button
-              type="button"
-              onClick={() => handleCopyTripLink()}
-              className="copy-trip-link-btn"
-              title="Copy direct link to this trip"
-            >
-              {copiedTripLink ? '✓ Copied Link' : '🔗 Copy Link'}
-            </button>
-            <details className="trip-more-menu" ref={tripMenuRef}>
-              <summary aria-label="More trip actions">More ▾</summary>
-              <div className="trip-more-menu-list" onClick={closeTripMenu}>
-                <button onClick={async () => {
-                  const name = (await promptDialog({
-                    title: 'Create a new trip',
-                    label: 'Trip name',
-                    placeholder: 'e.g. Enchantments thru-hike',
-                    confirmLabel: 'Create Trip',
-                  }))?.trim();
-                  if (name) createNewTrip(name);
-                }}>Create New Trip</button>
-                <button onClick={copyTrip}>Copy Trip</button>
-                {user.id === currentTrip.userId && (
-                  <button onClick={saveCurrentTripAsTemplate}>Save as Template</button>
-                )}
-                <button onClick={handlePrintAllTabs}>Download All Tabs</button>
-                <button onClick={resetTrip}>Reset Items</button>
-                <hr />
-                {user.id === currentTrip.userId ? (
-                  <button onClick={deleteTrip} className="danger">Delete Trip</button>
+
+          <div className="trip-hero-actions">
+            <details className="trip-people-menu" ref={peopleMenuRef}>
+              <summary aria-label={peopleLabel} title="Packers">
+                <span className="avatar-stack">
+                  {visiblePeople.map(person => (
+                    <span key={person.id} className="avatar" style={{ background: avatarColor(person) }}>
+                      {initial(person.name)}
+                    </span>
+                  ))}
+                  {hiddenPeopleCount > 0 && <span className="avatar avatar-more">+{hiddenPeopleCount}</span>}
+                  <span className="avatar avatar-add"><PlusIcon size={14} /></span>
+                </span>
+              </summary>
+              <div className="trip-popover trip-people-popover">
+                <h3>Packers</h3>
+                {people.length === 0 ? (
+                  <p className="trip-popover-empty">Nobody added yet.</p>
                 ) : (
-                  <button onClick={leaveTrip} className="danger">Remove Trip</button>
+                  <ul className="trip-people-list">
+                    {people.map(person => (
+                      <li key={person.id}>
+                        <span className="avatar" style={{ background: avatarColor(person) }}>{initial(person.name)}</span>
+                        <span className="trip-person-name">
+                          {person.name}
+                          {person.id === myPersonId && <span className="trip-person-you">You</span>}
+                        </span>
+                        <button
+                          type="button"
+                          className="trip-icon-btn subtle"
+                          onClick={() => removePerson(person.id)}
+                          aria-label={`Remove ${person.name}`}
+                          title={`Remove ${person.name}`}
+                        >
+                          <CloseIcon size={14} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button type="button" className="trip-popover-add" onClick={promptAddPerson}>
+                  <PlusIcon size={14} />Add packer
+                </button>
+                {people.length > 0 && (
+                  <label className="trip-popover-field">
+                    <span>Which one is you?</span>
+                    <select
+                      value={myPersonId}
+                      onChange={event => setMyPackingPerson(event.target.value)}
+                    >
+                      <option value="">Not linked</option>
+                      {people.map(person => (
+                        <option
+                          key={person.id}
+                          value={person.id}
+                          disabled={Boolean(person.userId && person.userId !== user.id)}
+                        >
+                          {person.name}{person.userId && person.userId !== user.id ? ' (linked)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 )}
               </div>
             </details>
-          </div>
-        )}
-      </div>
 
-      <div className="trip-header-bottom">
-        <div className="people-manager">
-          <h3>Packers</h3>
-          <label className="voice-identity">
-            <span>My packing row</span>
-            <select
-              aria-label="My packing row"
-              value={currentTrip.people.find(person => person.userId === user.id)?.id || ''}
-              onChange={event => setMyPackingPerson(event.target.value)}
-            >
-              <option value="">Not linked</option>
-              {currentTrip.people.map(person => (
-                <option
-                  key={person.id}
-                  value={person.id}
-                  disabled={Boolean(person.userId && person.userId !== user.id)}
-                >
-                  {person.name}{person.userId && person.userId !== user.id ? ' (linked)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="people-list">
-            {currentTrip.people.map(p => (
-              <span key={p.id} className="person-tag">
-                {p.name}
-                <button
-                  className="remove-person-btn"
-                  onClick={() => removePerson(p.id)}
-                  title={`Remove ${p.name}`}
-                >
-                  ×
+            {isTemplate ? (
+              <button type="button" className="trip-primary-btn" onClick={openTemplates}>Done</button>
+            ) : (
+              <>
+                <button type="button" className="trip-primary-btn" onClick={() => setIsShareModalOpen(true)}>
+                  <ShareIcon />Share
                 </button>
-              </span>
-            ))}
-            <button onClick={async () => {
-              const name = (await promptDialog({
-                title: 'Add a packer',
-                label: 'Name',
-                placeholder: 'e.g. Sam',
-                confirmLabel: 'Add',
-              }))?.trim();
-              if (name) addPerson(name);
-            }}>+ Add Person</button>
+                <button
+                  type="button"
+                  className={`trip-icon-btn ${copiedTripLink ? 'is-done' : ''}`}
+                  onClick={() => handleCopyTripLink()}
+                  aria-label={copiedTripLink ? 'Link copied' : 'Copy link to this trip'}
+                  title={copiedTripLink ? 'Link copied' : 'Copy link to this trip'}
+                >
+                  {copiedTripLink ? <CheckIcon size={17} /> : <LinkIcon size={17} />}
+                </button>
+                <details className="trip-hero-more" ref={tripMenuRef}>
+                  <summary className="trip-icon-btn" aria-label="More trip actions" title="More">
+                    <MoreIcon size={18} />
+                  </summary>
+                  <div className="trip-popover trip-more-list" onClick={closeTripMenu}>
+                    <button onClick={async () => {
+                      const name = (await promptDialog({
+                        title: 'Create a new trip',
+                        label: 'Trip name',
+                        placeholder: 'e.g. Enchantments thru-hike',
+                        confirmLabel: 'Create Trip',
+                      }))?.trim();
+                      if (name) createNewTrip(name);
+                    }}>Create New Trip</button>
+                    <button onClick={copyTrip}>Copy Trip</button>
+                    {user.id === currentTrip.userId && (
+                      <button onClick={saveCurrentTripAsTemplate}>Save as Template</button>
+                    )}
+                    <button onClick={handlePrintAllTabs}>Download All Tabs</button>
+                    <button onClick={resetTrip}>Reset Items</button>
+                    <hr />
+                    {user.id === currentTrip.userId ? (
+                      <button onClick={deleteTrip} className="danger">Delete Trip</button>
+                    ) : (
+                      <button onClick={leaveTrip} className="danger">Remove Trip</button>
+                    )}
+                  </div>
+                </details>
+              </>
+            )}
           </div>
         </div>
+
         {!isTemplate && (
-          <div className="voice-controls">
-            <form className="ask-form" onSubmit={event => {
+          <div className="trip-ask">
+            <form className="trip-ask-field" onSubmit={event => {
               event.preventDefault();
               void askTripQuestion(askQuestion);
             }}>
+              <ChatIcon />
               <input
                 value={askQuestion}
                 onChange={event => setAskQuestion(event.target.value)}
@@ -229,21 +334,26 @@ export function TripHeader({
                 aria-label="Question about this trip"
                 maxLength={500}
               />
-              <button type="submit" className="voice-btn" disabled={isAsking || !askQuestion.trim()}>
-                {isAsking ? 'Thinking...' : 'Ask'}
+              {askQuestion.trim() && (
+                <button type="submit" className="trip-ask-btn" disabled={isAsking} aria-label="Ask" title="Ask">
+                  <SendIcon />
+                </button>
+              )}
+              <button
+                type="button"
+                className={`trip-ask-btn ${isListening ? 'listening' : ''}`}
+                onClick={toggleVoiceQuestion}
+                aria-label={isListening ? 'Stop voice question' : 'Ask by voice'}
+                aria-pressed={isListening}
+                title={isListening ? 'Stop voice question' : 'Ask by voice'}
+              >
+                <MicIcon />
               </button>
             </form>
-            <button
-              type="button"
-              className={`voice-btn ${isListening ? 'listening' : ''}`}
-              onClick={toggleVoiceQuestion}
-              title="Ask a question about this trip by voice"
-            >
-              {isListening ? 'Stop voice' : 'Voice'}
-            </button>
-            <div className="ask-response" aria-live="polite">
-              {lastTranscript && <div className="voice-transcript">You asked: {lastTranscript}</div>}
-              {askAnswer && <div className="voice-answer">{askAnswer}</div>}
+            <div className="trip-ask-response" aria-live="polite">
+              {isAsking && !askAnswer && <div className="trip-ask-thinking">Thinking…</div>}
+              {lastTranscript && <div className="trip-ask-transcript">You asked: {lastTranscript}</div>}
+              {askAnswer && <div className="trip-ask-answer">{askAnswer}</div>}
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
-/* Trip tab: trip overview, a forecast-style strip of day tiles, and the
+/* Trip tab: start date and tags, a forecast-style strip of day tiles, and the
    selected day's detail panel. */
 
 .itin-panel {
@@ -66,51 +66,13 @@
   border-color: #cbd5e1;
 }
 
-.itin-packing {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.25rem;
-  margin-left: auto;
-}
-
-.itin-packer {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.itin-packer-name {
-  font-weight: 600;
-}
-
-.itin-packer-track {
-  width: 64px;
-  height: 6px;
-  border-radius: 3px;
-  background: #f1f5f9;
-  overflow: hidden;
-}
-
-.itin-packer-track i {
-  display: block;
-  height: 100%;
-  background: var(--accent-color);
-  transition: width 0.4s ease;
-}
-
-.itin-packer-pct,
-.itin-packer-weight {
-  color: var(--muted-text);
-}
-
 .itin-tags {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-  width: 100%;
 }
 
 .itin-tag {
@@ -743,10 +705,6 @@
 }
 
 @media (max-width: 640px) {
-
-  .itin-packing {
-    margin-left: 0;
-  }
 
   .itin-forecast {
     grid-template-columns: 1fr;

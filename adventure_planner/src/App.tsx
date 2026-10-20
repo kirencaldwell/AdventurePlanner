@@ -2377,6 +2377,7 @@ function App() {
         setActiveTab={setActiveTab}
         currentTrip={currentTrip}
         addCategory={addCategory}
+        notPackedCount={notPackedItems.length}
       />
 
       <main className="content">
@@ -2413,7 +2414,6 @@ function App() {
             currentTrip={currentTrip}
             weatherRows={weatherRows}
             updateStartDate={updateStartDate}
-            gearCloset={gearCloset}
             removeTripTag={removeTripTag}
             addTripTag={addTripTag}
             tripTagInput={tripTagInput}
