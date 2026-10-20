@@ -12,7 +12,6 @@
   background: var(--white);
   border-radius: 12px;
   box-shadow: var(--shadow);
-  overflow: hidden;
 }
 
 .pk-head {
@@ -194,8 +193,10 @@
 
 .pk-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.25rem 0.75rem;
+  padding: 0.15rem 0.5rem 0.15rem 0;
   border-radius: 10px;
 }
 
@@ -203,71 +204,13 @@
   background: var(--pk-hover);
 }
 
-.pk-check {
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border-radius: 50%;
-  position: relative;
-}
-
-.pk-check::before {
-  content: '';
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid var(--pk-not-packed);
-  box-sizing: border-box;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-size: 0.8rem;
-  font-weight: 700;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.pk-check:hover {
-  filter: none;
-}
-
-.pk-check:hover::before {
-  border-color: var(--accent-color);
-}
-
-.pk-check-fully-packed::before,
-.pk-check-in-car::before {
-  content: '✓';
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-}
-
-.pk-check-in-car::before {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-
-.pk-check-set-aside::before {
-  border-style: dashed;
-  border-color: #d97706;
-}
-
-.pk-check-not-bringing::before {
-  content: '–';
-  color: var(--muted-text);
-  border-color: var(--border-color);
-}
-
 .pk-row-main {
-  flex: 1;
+  flex: 1 1 220px;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.6rem 0.5rem 0.6rem 0.25rem;
+  padding: 0.6rem 0.25rem 0.6rem 0.75rem;
   background: transparent;
   text-align: left;
   font-weight: 400;
@@ -309,7 +252,64 @@
   line-height: 1;
 }
 
-/* Status colors; "not packed" stays neutral so a fresh list doesn't look like errors */
+/* One-tap status strip */
+.pk-strip {
+  display: flex;
+  flex-shrink: 0;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 9px;
+  background: var(--pk-hover);
+}
+
+.pk-row:hover .pk-strip {
+  background: var(--white);
+}
+
+.pk-strip-btn {
+  padding: 0.35rem 0.6rem;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pk-strip-btn:hover {
+  filter: none;
+  color: var(--text-color);
+}
+
+.pk-strip-btn.active {
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.pk-strip-more {
+  position: relative;
+}
+
+.pk-strip-menu {
+  min-width: 180px;
+}
+
+.pk-strip-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pk-strip-menu button.active {
+  font-weight: 600;
+}
+
+.pk-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
 .pk-pill {
   flex-shrink: 0;
   padding: 0.15rem 0.6rem;
@@ -319,13 +319,26 @@
   white-space: nowrap;
 }
 
-.pk-status-not-packed { background: #f1f5f9; color: #475569; }
+/* Status colors; "not packed" stays neutral so a fresh list doesn't look like errors */
+.pk-status-not-packed { background: #ffffff; color: #475569; }
 .pk-status-set-aside { background: #fef3c7; color: #b45309; }
 .pk-status-fully-packed { background: #dcfce7; color: #15803d; }
 .pk-status-in-car { background: #dbeafe; color: #1d4ed8; }
 .pk-status-not-bringing { background: #f1f5f9; color: #64748b; }
 .pk-status-needs-charging { background: #ede9fe; color: #6d28d9; }
 .pk-status-need-to-buy { background: #ffedd5; color: #c2410c; }
+
+.pk-strip-btn.active.pk-status-fully-packed { background: var(--accent-color); color: #fff; }
+.pk-strip-btn.active.pk-status-in-car { background: #2563eb; color: #fff; }
+.pk-chip.active.pk-status-not-packed { border-color: var(--border-color); }
+
+.pk-dot.pk-status-not-packed { background: #94a3b8; }
+.pk-dot.pk-status-set-aside { background: #d97706; }
+.pk-dot.pk-status-fully-packed { background: #16a34a; }
+.pk-dot.pk-status-in-car { background: #2563eb; }
+.pk-dot.pk-status-not-bringing { background: #9ca3af; }
+.pk-dot.pk-status-needs-charging { background: #7c3aed; }
+.pk-dot.pk-status-need-to-buy { background: #ea580c; }
 
 .pk-empty {
   margin: 0;
@@ -612,6 +625,33 @@
 
   .pk-list {
     padding: 0 0.25rem 0.25rem;
+  }
+
+  .pk-row {
+    padding: 0.25rem 0.5rem 0.6rem;
+    border-bottom: 1px solid var(--pk-muted-line);
+    border-radius: 0;
+  }
+
+  .pk-row-main {
+    padding-left: 0.25rem;
+  }
+
+  .pk-strip {
+    width: 100%;
+  }
+
+  .pk-strip > .pk-strip-btn,
+  .pk-strip-more {
+    flex: 1;
+  }
+
+  .pk-strip-more .pk-strip-btn {
+    width: 100%;
+  }
+
+  .pk-strip-btn {
+    padding: 0.5rem 0.25rem;
   }
 
   /* Bottom sheet on phones */

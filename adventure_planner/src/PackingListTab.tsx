@@ -34,8 +34,16 @@ interface PackingListTabProps {
   resetTab: (categoryId: string) => Promise<void>;
 }
 
-// Statuses that take an item off the person's "to pack" list
+// Statuses that count as packed
 const PACKED_STATUSES: StatusId[] = ['fully-packed', 'in-car'];
+
+// One-tap statuses shown on every row; the rest live behind "More"
+const QUICK_STATUSES: { id: StatusId; label: string }[] = [
+  { id: 'not-packed', label: 'Not packed' },
+  { id: 'set-aside', label: 'Set aside' },
+  { id: 'fully-packed', label: 'Packed' },
+  { id: 'in-car', label: 'In car' },
+];
 
 const statusLabel = (statusId: StatusId) =>
   DEFAULT_STATUSES.find(s => s.id === statusId)?.label || statusId;
@@ -87,7 +95,6 @@ export function PackingListTab({
   const [chosenPersonId, setChosenPersonId] = useState<string | null>(null);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showPacked, setShowPacked] = useState(false);
   const [showSkipped, setShowSkipped] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -120,13 +127,10 @@ export function PackingListTab({
     : undefined;
   const allStats = calcPersonPackingStats(currentTrip, activeCategory.id, gearCloset);
 
-  const toPack = person
-    ? activeCategory.items.filter(item => {
-        const status = getStatus(item, person.id);
-        return status !== 'not-bringing' && !PACKED_STATUSES.includes(status);
-      })
+  // Rows stay in place when their status changes, so a mis-tap is easy to undo; only "not bringing" is tucked away
+  const bringing = person
+    ? activeCategory.items.filter(item => getStatus(item, person.id) !== 'not-bringing')
     : activeCategory.items;
-  const packed = person ? activeCategory.items.filter(item => PACKED_STATUSES.includes(getStatus(item, person.id))) : [];
   const skipped = person ? activeCategory.items.filter(item => getStatus(item, person.id) === 'not-bringing') : [];
 
   const submitDraft = () => {
@@ -142,13 +146,6 @@ export function PackingListTab({
     setClosetPickerOpen(true);
   };
 
-  const togglePacked = (item: Item) => {
-    if (!person) return;
-    const status = getStatus(item, person.id);
-    const isDone = status === 'not-bringing' || PACKED_STATUSES.includes(status);
-    updateStatus(activeCategory.id, item.id, person.id, isDone ? 'not-packed' : 'fully-packed');
-  };
-
   const personName = (id?: string) => people.find(p => p.id === id)?.name;
 
   const renderRow = (item: Item) => {
@@ -159,7 +156,8 @@ export function PackingListTab({
     const carrier = person ? personName(item.personCarriedBy?.[person.id]) : undefined;
     const isPacked = PACKED_STATUSES.includes(status);
     const isSkipped = status === 'not-bringing';
-    const showPill = person && status !== 'not-packed' && status !== 'fully-packed';
+    // Statuses behind "More" get a pill so they're visible without opening the menu
+    const showPill = person && !QUICK_STATUSES.some(s => s.id === status);
 
     const meta: string[] = [];
     if (weightOz !== null) meta.push(formatWeight(weightOz * qty));
@@ -173,17 +171,7 @@ export function PackingListTab({
 
     return (
       <li key={item.id} className={`pk-row ${isPacked || isSkipped ? 'pk-row-done' : ''}`}>
-        {person && (
-          <button
-            type="button"
-            className={`pk-check pk-check-${status}`}
-            aria-pressed={isPacked}
-            aria-label={isPacked || isSkipped ? `Move ${item.name} back to the list` : `Mark ${item.name} packed`}
-            title={isPacked || isSkipped ? 'Move back to the list' : 'Mark packed'}
-            onClick={() => togglePacked(item)}
-          />
-        )}
-        <button type="button" className="pk-row-main" onClick={() => setOpenItemId(item.id)}>
+        <button type="button" className="pk-row-main" onClick={() => setOpenItemId(item.id)} title="Show details">
           <span className="pk-row-text">
             <span className="pk-row-name">{item.name}</span>
             {meta.length > 0 && (
@@ -195,6 +183,13 @@ export function PackingListTab({
           {showPill && <span className={`pk-pill pk-status-${status}`}>{statusLabel(status)}</span>}
           <span className="pk-chevron" aria-hidden="true">›</span>
         </button>
+        {person && (
+          <StatusStrip
+            itemName={item.name}
+            status={status}
+            onChange={statusId => updateStatus(activeCategory.id, item.id, person.id, statusId)}
+          />
+        )}
       </li>
     );
   };
@@ -317,13 +312,13 @@ export function PackingListTab({
           )}
         </header>
 
-        {toPack.length > 0 ? (
-          <ul className="pk-list">{toPack.map(renderRow)}</ul>
+        {bringing.length > 0 ? (
+          <ul className="pk-list">{bringing.map(renderRow)}</ul>
         ) : (
           <p className="pk-empty">
             {activeCategory.items.length === 0
               ? 'This list is empty. Add the first item below.'
-              : `Everything on this list is packed${person && people.length > 1 ? ` for ${person.name}` : ''}.`}
+              : `${person && people.length > 1 ? `${person.name} isn't` : "You're not"} bringing anything on this list.`}
           </p>
         )}
 
@@ -348,15 +343,6 @@ export function PackingListTab({
             <button type="button" className="pk-add-btn" onClick={submitDraft}>Add</button>
           )}
         </div>
-
-        {packed.length > 0 && (
-          <section className="pk-section">
-            <button type="button" className="pk-section-toggle" aria-expanded={showPacked} onClick={() => setShowPacked(v => !v)}>
-              <span aria-hidden="true">{showPacked ? '▾' : '▸'}</span> Packed ({packed.length})
-            </button>
-            {showPacked && <ul className="pk-list">{packed.map(renderRow)}</ul>}
-          </section>
-        )}
 
         {skipped.length > 0 && (
           <section className="pk-section">
@@ -390,6 +376,82 @@ export function PackingListTab({
           }}
         />
       )}
+    </div>
+  );
+}
+
+interface StatusStripProps {
+  itemName: string;
+  status: StatusId;
+  onChange: (statusId: StatusId) => void;
+}
+
+function StatusStrip({ itemName, status, onChange }: StatusStripProps) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const isQuick = QUICK_STATUSES.some(s => s.id === status);
+  const moreStatuses = DEFAULT_STATUSES.filter(s => !QUICK_STATUSES.some(q => q.id === s.id));
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMoreOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [moreOpen]);
+
+  return (
+    <div className="pk-strip" role="group" aria-label={`Status of ${itemName}`}>
+      {QUICK_STATUSES.map(s => (
+        <button
+          key={s.id}
+          type="button"
+          className={`pk-strip-btn ${status === s.id ? `active pk-status-${s.id}` : ''}`}
+          aria-pressed={status === s.id}
+          onClick={() => onChange(s.id)}
+        >
+          {s.label}
+        </button>
+      ))}
+      <div className="pk-strip-more" ref={moreRef}>
+        <button
+          type="button"
+          className={`pk-strip-btn ${!isQuick ? `active pk-status-${status}` : ''}`}
+          aria-haspopup="menu"
+          aria-expanded={moreOpen}
+          aria-label={isQuick ? 'More statuses' : `${statusLabel(status)}, more statuses`}
+          onClick={() => setMoreOpen(open => !open)}
+        >
+          ⋯
+        </button>
+        {moreOpen && (
+          <div className="pk-menu-panel pk-strip-menu" role="menu">
+            {moreStatuses.map(s => (
+              <button
+                key={s.id}
+                type="button"
+                role="menuitem"
+                className={status === s.id ? 'active' : ''}
+                onClick={() => {
+                  onChange(s.id);
+                  setMoreOpen(false);
+                }}
+              >
+                <span className={`pk-dot pk-status-${s.id}`} aria-hidden="true" />
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
