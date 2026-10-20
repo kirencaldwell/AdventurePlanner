@@ -348,6 +348,7 @@ function App() {
               categories: row.categories || [],
               tags: row.tags || [],
               isTemplate: row.is_template === true,
+              completed: row.completed === true,
               startDate: row.start_date || '',
               days: row.days || [],
               caltopoUrl: row.caltopo_url || '',
@@ -384,6 +385,7 @@ function App() {
                 categories: directData.categories || [],
                 tags: directData.tags || [],
                 isTemplate: directData.is_template === true,
+                completed: directData.completed === true,
                 startDate: directData.start_date || '',
                 days: directData.days || [],
                 caltopoUrl: directData.caltopo_url || '',
@@ -473,6 +475,7 @@ function App() {
         categories: t.categories,
         tags: t.tags || [],
         is_template: t.isTemplate || false,
+        completed: t.completed || false,
         start_date: t.startDate || '',
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
@@ -1669,6 +1672,7 @@ function App() {
       })),
       tags: [...(sourceTrip.tags || [])],
       isTemplate,
+      completed: resetTripDetails ? false : sourceTrip.completed,
       startDate: resetTripDetails ? '' : sourceTrip.startDate || '',
       days: (sourceTrip.days || []).map(day => ({
         ...day,
@@ -1879,6 +1883,16 @@ function App() {
     updateCurrentTrip(trip => ({
       ...trip,
       debriefStravaEmbeds: [...embeds, ...(trip.debriefStravaEmbeds || [])],
+      // A Strava post means the trip happened; the header toggle can undo this.
+      completed: embeds.length > 0 ? true : trip.completed,
+      lastModified: Date.now(),
+    }));
+  };
+
+  const toggleTripCompleted = () => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      completed: !trip.completed,
       lastModified: Date.now(),
     }));
   };
@@ -2345,6 +2359,7 @@ function App() {
         setCurrentTripId={setCurrentTripId}
         trips={trips}
         updateTripName={updateTripName}
+        toggleTripCompleted={toggleTripCompleted}
         tripStats={tripStats}
         setIsShareModalOpen={setIsShareModalOpen}
         handleCopyTripLink={handleCopyTripLink}

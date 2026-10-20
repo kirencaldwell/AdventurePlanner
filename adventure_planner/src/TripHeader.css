@@ -179,6 +179,33 @@
   white-space: nowrap;
 }
 
+.trip-completed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 26px;
+  padding: 0 0.6rem;
+  border: 1px dashed var(--hero-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--hero-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.trip-completed-toggle:hover {
+  filter: none;
+  background: var(--hero-fill);
+  color: var(--hero-text);
+}
+
+.trip-completed-toggle.is-completed {
+  border-style: solid;
+  border-color: #8fd1a8;
+  color: #8fd1a8;
+}
+
 .trip-hero-actions {
   display: flex;
   align-items: center;
