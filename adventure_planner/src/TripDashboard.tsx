@@ -103,21 +103,26 @@ export const TripDashboard = ({
       && matchesPresence(filters.debriefComment, hasDebriefComment);
   });
 
-  // Coming up: soonest first. Ideas: most recently edited first. Past: most recent first.
+  // Past: trips marked completed. Coming up: dated trips that haven't ended yet.
+  // Ideas: everything else, including dated trips that ended without being completed.
   const today = getTodayString();
+  const getTripSection = (trip: Trip): 'upcoming' | 'ideas' | 'past' => {
+    if (trip.completed) return 'past';
+    if (trip.startDate && getTripEndDate(trip) >= today) return 'upcoming';
+    return 'ideas';
+  };
+  // Coming up: soonest first. Ideas: most recently edited first. Past: most recent first.
   const upcomingTrips = filteredTrips
-    .filter(trip => trip.startDate && getTripEndDate(trip) >= today)
+    .filter(trip => getTripSection(trip) === 'upcoming')
     .sort((first, second) => (first.startDate as string).localeCompare(second.startDate as string));
   const ideaTrips = filteredTrips
-    .filter(trip => !trip.startDate)
+    .filter(trip => getTripSection(trip) === 'ideas')
     .sort((first, second) => second.lastModified - first.lastModified);
   const pastTrips = filteredTrips
-    .filter(trip => trip.startDate && getTripEndDate(trip) < today)
-    .sort((first, second) => (second.startDate as string).localeCompare(first.startDate as string));
+    .filter(trip => getTripSection(trip) === 'past')
+    .sort((first, second) => (second.startDate || '').localeCompare(first.startDate || ''));
   const totalCounts = trips.reduce((counts, trip) => {
-    if (!trip.startDate) counts.ideas += 1;
-    else if (getTripEndDate(trip) >= today) counts.upcoming += 1;
-    else counts.past += 1;
+    counts[getTripSection(trip)] += 1;
     return counts;
   }, { upcoming: 0, ideas: 0, past: 0 });
   const summaryParts = [
@@ -314,7 +319,7 @@ export const TripDashboard = ({
       </div>
     ) : (<>
       {renderSection('dash-upcoming', 'Coming up', 'Soonest first', upcomingTrips)}
-      {renderSection('dash-ideas', 'Ideas', 'No date yet', ideaTrips)}
+      {renderSection('dash-ideas', 'Ideas', 'Not done yet', ideaTrips)}
       {pastTrips.length > 0 && (
         <section className="dash-section" aria-labelledby="dash-past">
           <h2 className="dash-past-heading" id="dash-past">

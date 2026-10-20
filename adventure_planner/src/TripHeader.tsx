@@ -28,6 +28,7 @@ interface TripHeaderProps {
   setCurrentTripId: Dispatch<SetStateAction<string | null>>;
   trips: Trip[];
   updateTripName: (name: string) => void;
+  toggleTripCompleted: () => void;
   tripStats: { dayCount: number; mileageMin: number; mileageMax: number; elevationMin: number; elevationMax: number; mileageRange: string; elevationRange: string; };
   setIsShareModalOpen: Dispatch<SetStateAction<boolean>>;
   handleCopyTripLink: (tripIdToCopy?: string) => void;
@@ -74,6 +75,7 @@ export function TripHeader({
   setCurrentTripId,
   trips,
   updateTripName,
+  toggleTripCompleted,
   tripStats,
   setIsShareModalOpen,
   handleCopyTripLink,
@@ -202,6 +204,17 @@ export function TripHeader({
                 </li>
                 {tripStats.mileageMax > 0 && <li><RouteIcon />{tripStats.mileageRange}</li>}
                 {tripStats.elevationMax > 0 && <li><MountainIcon />{tripStats.elevationRange} gain</li>}
+                <li>
+                  <button
+                    type="button"
+                    className={`trip-completed-toggle ${currentTrip.completed ? 'is-completed' : ''}`}
+                    aria-pressed={currentTrip.completed === true}
+                    onClick={toggleTripCompleted}
+                    title={currentTrip.completed ? 'Mark as not completed' : 'Mark as completed'}
+                  >
+                    <CheckIcon size={14} />{currentTrip.completed ? 'Completed' : 'Mark completed'}
+                  </button>
+                </li>
               </ul>
             )}
           </div>
