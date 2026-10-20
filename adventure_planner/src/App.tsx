@@ -2444,6 +2444,7 @@ function App() {
             setNewItemDrafts={setNewItemDrafts}
             addItem={addItem}
             currentTrip={currentTrip}
+            currentUserId={user.id}
             gearCloset={gearCloset}
             toggleGroupGear={toggleGroupGear}
             setItemAssignment={setItemAssignment}
