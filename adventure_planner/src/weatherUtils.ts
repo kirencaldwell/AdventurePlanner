@@ -16,7 +16,10 @@ export interface WeatherRow {
   freezingLevel?: number;
   snowDepth?: number;
   precipitation?: number;
+  precipitationProbability?: number;
+  precipitationSource?: string;
   snowfall?: number;
+  locationElevation?: number;
   error?: string;
   weatherCode?: number; // Added to help check if stormy
   aqi?: number;
@@ -68,8 +71,45 @@ export const formatPrecip = (value: number | undefined) => value == null ? '-' :
 export const formatSnow = (value: number | undefined) => value == null ? '-' : `${(value / 2.54).toFixed(2)} in`;
 export const formatElevation = (value: number | undefined) => value == null ? '-' : `${(value * 3.28084).toFixed(0)} ft`;
 
-export const getAltTemp = (baseTemp: number, altitudeFeet: number) => {
-  return baseTemp - LAPSE_RATE_C_PER_M * (altitudeFeet * 0.3048);
+// Temperature at `altitudeFeet`, extrapolated from a reading taken at `baseElevationM`.
+export const getAltTemp = (baseTemp: number, altitudeFeet: number, baseElevationM = 0) => {
+  return baseTemp - LAPSE_RATE_C_PER_M * (altitudeFeet * 0.3048 - baseElevationM);
+};
+
+// Pressure levels that bracket typical trip altitudes (~5,000 ft, ~10,000 ft, ~18,000 ft).
+const PRESSURE_LEVELS = [850, 700, 500] as const;
+
+type ProfilePoint = { heightM: number; temp: number };
+
+// Temperature at an altitude from a vertical profile (surface reading plus model
+// pressure levels). Interpolates between points, and falls back to the standard
+// lapse rate outside the profile.
+export const interpolateProfileTemp = (profile: ProfilePoint[], altitudeFeet: number) => {
+  const altitudeM = altitudeFeet * 0.3048;
+  const points = [...profile].sort((a, b) => a.heightM - b.heightM);
+  if (points.length === 0) return NaN;
+  const lowest = points[0];
+  const highest = points[points.length - 1];
+  if (altitudeM <= lowest.heightM) return getAltTemp(lowest.temp, altitudeFeet, lowest.heightM);
+  if (altitudeM >= highest.heightM) return getAltTemp(highest.temp, altitudeFeet, highest.heightM);
+  for (let i = 0; i < points.length - 1; i++) {
+    const lower = points[i];
+    const upper = points[i + 1];
+    if (altitudeM >= lower.heightM && altitudeM <= upper.heightM) {
+      const span = upper.heightM - lower.heightM;
+      const fraction = span > 0 ? (altitudeM - lower.heightM) / span : 0;
+      return lower.temp + fraction * (upper.temp - lower.temp);
+    }
+  }
+  return NaN;
+};
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const median = (values: number[]) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 };
 
 export const getWeatherSummary = (code: number | undefined) => {
@@ -166,11 +206,71 @@ export const isDateWithinForecastRange = (dateStr: string) => {
   return diffDays <= 16;
 };
 
+// Daily values are aggregated over the location's local day (timezone=auto), so
+// highs, lows and precipitation totals line up with the trip date.
 const buildWeatherDataUrl = (coords: { latitude: number; longitude: number }, startDate: string, endDate: string) => {
   const safeStart = normalizeDateString(startDate);
   const safeEnd = normalizeDateString(endDate);
-  const baseUrl = isDateInPast(safeEnd) ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
-  return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum,cloudcover_mean,visibility_mean&hourly=temperature_2m,relativehumidity_2m,freezing_level_height,snow_depth&timezone=UTC&start_date=${safeStart}&end_date=${safeEnd}`;
+  const isArchive = isDateInPast(safeEnd);
+  const baseUrl = isArchive ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
+  const hourly = ['temperature_2m', 'relativehumidity_2m', 'freezing_level_height', 'snow_depth'];
+  if (!isArchive) {
+    PRESSURE_LEVELS.forEach((level) => hourly.push(`temperature_${level}hPa`, `geopotential_height_${level}hPa`));
+  }
+  return `${baseUrl}?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,windgusts_10m_max,snowfall_sum,cloudcover_mean,visibility_mean&hourly=${hourly.join(',')}&timezone=auto&start_date=${safeStart}&end_date=${safeEnd}`;
+};
+
+// Models compared for precipitation. NBM is NOAA's calibrated blend and is the
+// best single precipitation source in the US; outside its domain it returns
+// nothing and we use the median of the global models instead.
+const PRECIP_MODELS = ['ncep_nbm_conus', 'ecmwf_ifs025', 'gfs_seamless', 'icon_seamless'] as const;
+const PRECIP_MODEL_LABELS: Record<string, string> = {
+  ncep_nbm_conus: 'NOAA NBM',
+};
+
+type PrecipForecast = { precipitation?: number; snowfall?: number; probability?: number; source: string };
+
+const fetchPrecipConsensus = async (
+  coords: { latitude: number; longitude: number },
+  date: string,
+): Promise<PrecipForecast | null> => {
+  const safeDate = normalizeDateString(date);
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=precipitation_sum,snowfall_sum,precipitation_probability_max&models=${PRECIP_MODELS.join(',')}&timezone=auto&start_date=${safeDate}&end_date=${safeDate}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const daily = (await response.json()).daily || {};
+    const valueFor = (variable: string, model: string) => {
+      const value = daily[`${variable}_${model}`]?.[0];
+      return isFiniteNumber(value) ? value : undefined;
+    };
+
+    const preferred = PRECIP_MODELS.find((model) => valueFor('precipitation_sum', model) !== undefined && PRECIP_MODEL_LABELS[model]);
+    if (preferred) {
+      return {
+        precipitation: valueFor('precipitation_sum', preferred),
+        snowfall: valueFor('snowfall_sum', preferred),
+        probability: valueFor('precipitation_probability_max', preferred),
+        source: PRECIP_MODEL_LABELS[preferred],
+      };
+    }
+
+    const collect = (variable: string) => PRECIP_MODELS
+      .map((model) => valueFor(variable, model))
+      .filter(isFiniteNumber);
+    const precipValues = collect('precipitation_sum');
+    if (precipValues.length === 0) return null;
+    const snowValues = collect('snowfall_sum');
+    const probabilityValues = collect('precipitation_probability_max');
+    return {
+      precipitation: median(precipValues),
+      snowfall: snowValues.length > 0 ? median(snowValues) : undefined,
+      probability: probabilityValues.length > 0 ? Math.round(median(probabilityValues)) : undefined,
+      source: `Median of ${precipValues.length} models`,
+    };
+  } catch {
+    return null;
+  }
 };
 
 export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, date: string): Promise<WeatherRow> => {
@@ -207,7 +307,10 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
   }
 
   const url = buildWeatherDataUrl(coords, date, date);
-  const response = await fetch(url);
+  const [response, precipConsensus] = await Promise.all([
+    fetch(url),
+    isDateInPast(date) ? Promise.resolve(null) : fetchPrecipConsensus(coords, date),
+  ]);
   if (!response.ok) {
     return {
       dayIndex,
@@ -233,8 +336,9 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
   const wind = daily.windspeed_10m_max?.[0];
   const windGust = daily.windgusts_10m_max?.[0];
   const visibility = daily.visibility_mean?.[0];
-  const precipitation = daily.precipitation_sum?.[0];
-  const snowfall = daily.snowfall_sum?.[0];
+  const precipitation = precipConsensus?.precipitation ?? daily.precipitation_sum?.[0];
+  const snowfall = precipConsensus?.snowfall ?? daily.snowfall_sum?.[0];
+  const locationElevation: number | undefined = isFiniteNumber(payload.elevation) ? payload.elevation : undefined;
   const humidityValues = hourly.relativehumidity_2m || [];
   const freezingValues = hourly.freezing_level_height || [];
   const snowDepthValues = hourly.snow_depth || [];
@@ -242,15 +346,31 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
   const humidity = humidityValues.length > 0 ? Math.round(humidityValues.reduce((sum: number, value: number) => sum + value, 0) / humidityValues.length) : undefined;
   const freezingLevel = freezingValues.length > 0 ? Math.round(freezingValues.reduce((sum: number, value: number) => sum + value, 0) / freezingValues.length) : undefined;
   const snowDepth = snowDepthValues.length > 0 ? Math.max(...snowDepthValues) : undefined;
-  const hourlyTemps = hourly.temperature_2m || [];
+  const hourlyTemps: (number | null)[] = hourly.temperature_2m || [];
+  const baseElevation = locationElevation ?? 0;
+
+  // Build an hourly vertical profile: the 2m reading at the location's real
+  // elevation, plus model pressure levels that sit above the ground.
+  const hourlyProfiles: ProfilePoint[][] = hourlyTemps.map((surfaceTemp, hour) => {
+    const points: ProfilePoint[] = [];
+    if (isFiniteNumber(surfaceTemp)) points.push({ heightM: baseElevation, temp: surfaceTemp });
+    PRESSURE_LEVELS.forEach((level) => {
+      const temp = hourly[`temperature_${level}hPa`]?.[hour];
+      const heightM = hourly[`geopotential_height_${level}hPa`]?.[hour];
+      if (isFiniteNumber(temp) && isFiniteNumber(heightM) && heightM > baseElevation + 100) {
+        points.push({ heightM, temp });
+      }
+    });
+    return points;
+  }).filter((points) => points.length > 0);
 
   const highLow = Object.fromEntries(
     ALTITUDES.map((altitude) => {
-      const altitudeTemps = hourlyTemps.length > 0
-        ? hourlyTemps.map((temp: number) => getAltTemp(temp, altitude))
+      const altitudeTemps = hourlyProfiles.length > 0
+        ? hourlyProfiles.map((points) => interpolateProfileTemp(points, altitude))
         : [
-            maxTemp != null ? getAltTemp(maxTemp, altitude) : NaN,
-            minTemp != null ? getAltTemp(minTemp, altitude) : NaN,
+            maxTemp != null ? getAltTemp(maxTemp, altitude, baseElevation) : NaN,
+            minTemp != null ? getAltTemp(minTemp, altitude, baseElevation) : NaN,
           ];
 
       const high = altitudeTemps.length > 0 ? Math.max(...altitudeTemps) : NaN;
@@ -290,7 +410,10 @@ export const fetchWeatherForDay = async (dayIndex: number, dayLocation: string, 
     freezingLevel,
     snowDepth,
     precipitation,
+    precipitationProbability: precipConsensus?.probability,
+    precipitationSource: precipConsensus?.source,
     snowfall,
+    locationElevation,
     weatherCode: summaryCode,
     aqi: aqiVal,
   };
@@ -376,7 +499,7 @@ export const fetchAqiForLocationAndRange = async (
     return [];
   }
 
-  const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${coords.latitude}&longitude=${coords.longitude}&hourly=us_aqi&start_date=${start}&end_date=${end}&timezone=UTC`;
+  const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${coords.latitude}&longitude=${coords.longitude}&hourly=us_aqi&start_date=${start}&end_date=${end}&timezone=auto`;
   try {
     const resp = await fetch(url, { headers: { Accept: 'application/json' } });
     if (!resp.ok) throw new Error('AQI lookup failed');
