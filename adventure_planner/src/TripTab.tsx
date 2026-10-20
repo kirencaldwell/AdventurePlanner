@@ -1,11 +1,16 @@
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { calcPersonPackingStats, formatWeight, renderTextWithLinks } from './tripUtils';
-import type { GearClosetItem, Trip, TripActivity } from './types';
+import './TripTab.css';
+import { DayForecastDetail, DayForecastFlags, DayForecastTemps } from './DayForecast';
+import { formatTripStatNumber, parseTripNumber, renderTextWithLinks } from './tripUtils';
+import { getDayDate, hasForecast } from './weatherUtils';
+import type { WeatherRow } from './weatherUtils';
+import type { Trip, TripActivity, TripDay } from './types';
 
 interface TripTabProps {
   currentTrip: Trip;
+  weatherRows: WeatherRow[];
   updateStartDate: (date: string) => void;
-  gearCloset: GearClosetItem[];
   removeTripTag: (tagToRemove: string) => void;
   addTripTag: () => void;
   tripTagInput: string;
@@ -28,10 +33,45 @@ interface TripTabProps {
   deleteTripDayActivity: (dayId: string, activityId: string) => void;
 }
 
+const BUILT_IN_ACTIVITY_TYPES = ['hiking', 'biking', 'ski-touring'];
+
+const activityLabel = (type: string) => {
+  if (type === 'hiking') return 'Hike';
+  if (type === 'biking') return 'Bike';
+  if (type === 'ski-touring') return 'Ski tour';
+  return type;
+};
+
+const formatActivityMetrics = (activity: TripActivity) => {
+  const parts: string[] = [];
+  if (activity.miles) parts.push(`${activity.miles} mi`);
+  const gain = parseTripNumber(activity.elevationGain);
+  const loss = parseTripNumber(activity.elevationLost);
+  if (gain || loss) {
+    parts.push([
+      gain ? `+${gain.toLocaleString()}` : '',
+      loss ? `−${Math.abs(loss).toLocaleString()}` : '',
+    ].filter(Boolean).join(' / ') + ' ft');
+  }
+  return parts.join(' · ');
+};
+
+const getCalendarDate = (startDate: string | undefined, index: number) => {
+  if (!startDate) return null;
+  const date = new Date(`${getDayDate(startDate, index)}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    weekday: date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }),
+    day: date.toLocaleDateString(undefined, { day: 'numeric', timeZone: 'UTC' }),
+    full: date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }),
+    long: date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' }),
+  };
+};
+
 export function TripTab({
   currentTrip,
+  weatherRows,
   updateStartDate,
-  gearCloset,
   removeTripTag,
   addTripTag,
   tripTagInput,
@@ -53,76 +93,327 @@ export function TripTab({
   updateTripDayActivity,
   deleteTripDayActivity,
 }: TripTabProps) {
-  return (
-    <div className="trip-panel">
-      <div className="trip-input-row">
-        <div>
-          <label htmlFor="trip-start-date">Trip Start Date</label>
-        </div>
-        <input
-          id="trip-start-date"
-          type="date"
-          value={currentTrip.startDate || ''}
-          onChange={(e) => updateStartDate(e.target.value)}
-        />
-      </div>
-      {currentTrip.people.length > 0 && (() => {
-        const packingStats = calcPersonPackingStats(currentTrip, undefined, gearCloset);
-        return (
-          <div className="trip-packing-status">
-            <h3 className="packing-status-heading">Packed Status</h3>
-            <div className="packing-status-grid">
-              {packingStats.map(stats => {
-                const person = currentTrip.people.find(p => p.id === stats.personId);
-                if (!person) return null;
-                return (
-                  <div key={stats.personId} className="packing-status-card">
-                    <div className="packing-status-person-row">
-                      <span className="packing-status-name">{person.name}</span>
-                      <span className="packing-status-meta">
-                        {stats.packedCount}/{stats.totalCount} items &middot; {formatWeight(stats.plannedWeightOz)}
-                      </span>
-                    </div>
-                    <div className="packing-progress-track">
-                      <div
-                        className="packing-progress-fill"
-                        style={{ width: `${stats.packedPercent}%` }}
-                        title={`${stats.packedPercent}% packed`}
-                      />
-                    </div>
-                    <div className="packing-progress-label">{stats.packedPercent}% packed</div>
-                    <div className="packing-status-weight-breakdown">
-                      <span title="Base Weight">🎒 Base: {formatWeight(stats.baseWeightOz)}</span>
-                      <span title="Worn Weight">👕 Worn: {formatWeight(stats.wornWeightOz)}</span>
-                      <span title="Food Weight">🍴 Food: {formatWeight(stats.foodWeightOz)}</span>
-                    </div>
-                  </div>
-                );
-              })}
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
+  const selectedTileRef = useRef<HTMLButtonElement>(null);
+  const days = currentTrip.days || [];
+  const nextDate = getCalendarDate(currentTrip.startDate, days.length);
+
+  // Weather rows are keyed by day position; ignore a row whose location no
+  // longer matches (the day was moved or edited and the forecast is refetching).
+  const getWeatherRow = (day: TripDay, index: number) => {
+    const row = weatherRows.find(candidate => candidate.dayIndex === index);
+    return row && row.location === day.location ? row : undefined;
+  };
+
+  // The day being edited wins (a newly added day opens in edit mode), then
+  // the picked day, then the first day.
+  const selectedIndex = Math.max(0, days.findIndex(day => day.id === (
+    days.some(day => day.id === editingDayId) ? editingDayId : selectedDayId
+  )));
+  const selectedDay = days[selectedIndex] as TripDay | undefined;
+
+  useEffect(() => {
+    selectedTileRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [selectedDay?.id]);
+
+  const selectDay = (dayId: string) => {
+    setSelectedDayId(dayId);
+    if (editingDayId && editingDayId !== dayId) setEditingDayId(null);
+  };
+
+  const getDayMiles = (day: TripDay) =>
+    (day.activities || []).reduce((sum, activity) => sum + parseTripNumber(activity.miles), 0);
+  const getDayGain = (day: TripDay) =>
+    (day.activities || []).reduce((sum, activity) => sum + parseTripNumber(activity.elevationGain), 0);
+
+  const updateDay = (dayId: string, updates: Partial<Pick<TripDay, 'description' | 'notes'>>) => {
+    updateCurrentTrip(trip => ({
+      ...trip,
+      days: (trip.days || []).map(day => (day.id === dayId ? { ...day, ...updates } : day)),
+      lastModified: Date.now(),
+    }));
+  };
+
+
+  const renderDayDetail = (day: TripDay, index: number) => {
+    const row = getWeatherRow(day, index);
+    const date = getCalendarDate(currentTrip.startDate, index);
+    const elevationFt = hasForecast(row) && row.locationElevation != null
+      ? Math.round(row.locationElevation * 3.28084)
+      : null;
+    const subtitle = [
+      date?.long,
+      `Day ${index + 1} of ${days.length}`,
+      elevationFt != null ? `forecast at ${elevationFt.toLocaleString()} ft` : null,
+    ].filter(Boolean).join(' · ');
+
+    return (
+      <section className="itin-detail" aria-label={`Day ${index + 1} details`}>
+        <div className="itin-detail-main">
+          <div className="itin-detail-head">
+            <div className="itin-place">
+              <h3 className="itin-detail-title">
+                {day.location ? renderTextWithLinks(day.location) : <span className="itin-placeholder">No location yet</span>}
+              </h3>
+              <span className="itin-detail-sub">{subtitle}</span>
+            </div>
+            <div className="itin-day-nav">
+              <button
+                type="button"
+                className="itin-nav-btn"
+                aria-label="Previous day"
+                disabled={index === 0}
+                onClick={() => selectDay(days[index - 1].id)}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="itin-nav-btn"
+                aria-label="Next day"
+                disabled={index === days.length - 1}
+                onClick={() => selectDay(days[index + 1].id)}
+              >
+                ›
+              </button>
             </div>
           </div>
-        );
-      })()}
-      <section className="trip-tags" aria-labelledby="trip-tags-heading">
-        <h3 id="trip-tags-heading" className="packing-status-heading">Tags</h3>
-        <div className="trip-tags-content">
-          <div className="trip-tags-list">
-            {(currentTrip.tags || []).map(tag => (
-              <span className="trip-tag" key={tag}>
-                {tag}
+
+          {editingDayId === day.id ? renderDayEditor(day) : (
+            <>
+              <DayForecastFlags row={row} />
+              {day.description && <p className="itin-description">{renderTextWithLinks(day.description)}</p>}
+              {(day.activities || []).length > 0 ? (
+                <ol className="itin-legs">
+                  {(day.activities || []).map(activity => {
+                    const metrics = formatActivityMetrics(activity);
+                    return (
+                      <li key={activity.id} className={`itin-leg ${activity.importance === 'optional' ? 'optional' : ''}`}>
+                        <div className="itin-leg-title">
+                          <span className="itin-activity-type">{activityLabel(activity.type)}</span>
+                          {activity.importance === 'optional' && <span className="itin-optional">optional</span>}
+                        </div>
+                        {metrics && <div className="itin-activity-metrics">{metrics}</div>}
+                        {activity.description && (
+                          <p className="itin-activity-desc">{renderTextWithLinks(activity.description)}</p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="itin-muted">No activities planned yet.</p>
+              )}
+              <div className="itin-detail-actions">
+                <button type="button" className="itin-link-btn" onClick={() => setEditingDayId(day.id)}>
+                  Edit day
+                </button>
                 <button
                   type="button"
-                  className="remove-trip-tag-btn"
-                  aria-label={`Remove ${tag} tag`}
-                  onClick={() => removeTripTag(tag)}
+                  className="itin-link-btn"
+                  onClick={() => {
+                    addTripDayActivity(day.id);
+                    setEditingDayId(day.id);
+                  }}
                 >
-                  ×
+                  + Add activity
                 </button>
-              </span>
-            ))}
-          </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="itin-detail-side">
+          {hasForecast(row) ? (
+            <DayForecastDetail row={row} weatherLinks={day.weatherLinks} />
+          ) : (
+            <div className="itin-forecast itin-forecast-empty">
+              {!currentTrip.startDate
+                ? 'Set a start date to see the forecast for this day.'
+                : !day.location
+                  ? 'Add a location to see the forecast for this day.'
+                  : 'No forecast yet. Forecasts show up about two weeks out.'}
+            </div>
+          )}
+          <textarea
+            aria-label="Notes for this day"
+            className="itin-input itin-textarea itin-notes"
+            placeholder="Your notes for this day..."
+            value={day.notes || ''}
+            onChange={(e) => updateDay(day.id, { notes: e.target.value })}
+          />
+        </div>
+      </section>
+    );
+  };
+
+  const renderDayEditor = (day: TripDay) => (
+    <div className="itin-editor">
+      <div className="itin-edit-row">
+        <input
+          type="text"
+          aria-label="Location"
+          className="itin-input"
+          placeholder="Location, e.g. Boulder, CO or 40.1234, -105.1234"
+          value={day.location}
+          autoFocus={!day.location}
+          onChange={(e) => updateTripDayLocation(day.id, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+        />
+        <button type="button" className="itin-secondary-btn" onClick={() => setMapPickerDayId(day.id)}>
+          Pick on map
+        </button>
+      </div>
+      <textarea
+        aria-label="Day description"
+        className="itin-input itin-textarea"
+        placeholder="Plan for the day, water sources, permits..."
+        value={day.description || ''}
+        onChange={(e) => updateDay(day.id, { description: e.target.value })}
+      />
+
+      {(day.activities || []).length > 0 && (
+        <div className="itin-activity-editors">
+          {(day.activities || []).map(activity => (
+            <div key={activity.id} className="itin-activity-editor">
+              <select
+                aria-label="Activity type"
+                className="itin-input"
+                value={activity.type}
+                onChange={(e) => {
+                  const selectedValue = e.target.value;
+                  if (selectedValue === 'custom') {
+                    void promptForCustomActivityType(activity.type).then(customType => {
+                      if (customType) updateTripDayActivity(day.id, activity.id, { type: customType });
+                    });
+                  } else {
+                    updateTripDayActivity(day.id, activity.id, { type: selectedValue });
+                  }
+                }}
+              >
+                <option value="hiking">Hike</option>
+                <option value="biking">Bike</option>
+                <option value="ski-touring">Ski tour</option>
+                {!BUILT_IN_ACTIVITY_TYPES.includes(activity.type) && activity.type !== 'custom' && (
+                  <option value={activity.type}>{activity.type}</option>
+                )}
+                <option value="custom">Custom…</option>
+              </select>
+              <label className="itin-unit-field">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label="Miles"
+                  className="itin-input itin-number"
+                  placeholder="Miles"
+                  value={activity.miles}
+                  onChange={(e) => updateTripDayActivity(day.id, activity.id, { miles: e.target.value })}
+                />
+                <span aria-hidden="true">mi</span>
+              </label>
+              <label className="itin-unit-field">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label="Elevation gain (ft)"
+                  className="itin-input itin-number"
+                  placeholder="Gain"
+                  value={activity.elevationGain}
+                  onChange={(e) => updateTripDayActivity(day.id, activity.id, { elevationGain: e.target.value })}
+                />
+                <span aria-hidden="true">ft ↑</span>
+              </label>
+              <label className="itin-unit-field">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label="Elevation loss (ft)"
+                  className="itin-input itin-number"
+                  placeholder="Loss"
+                  value={activity.elevationLost}
+                  onChange={(e) => updateTripDayActivity(day.id, activity.id, { elevationLost: e.target.value })}
+                />
+                <span aria-hidden="true">ft ↓</span>
+              </label>
+              <label className="itin-optional-toggle">
+                <input
+                  type="checkbox"
+                  checked={activity.importance === 'optional'}
+                  onChange={(e) => updateTripDayActivity(day.id, activity.id, { importance: e.target.checked ? 'optional' : 'mandatory' })}
+                />
+                Optional
+              </label>
+              <button
+                type="button"
+                className="itin-icon-btn"
+                aria-label="Remove activity"
+                title="Remove activity"
+                onClick={() => deleteTripDayActivity(day.id, activity.id)}
+              >
+                ×
+              </button>
+              <input
+                type="text"
+                aria-label="Activity notes"
+                className="itin-input itin-activity-notes"
+                placeholder="Notes for this activity"
+                value={activity.description}
+                onChange={(e) => updateTripDayActivity(day.id, activity.id, { description: e.target.value })}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="itin-card-actions">
+        <button type="button" className="itin-link-btn" onClick={() => addTripDayActivity(day.id)}>
+          + Add activity
+        </button>
+        <div className="itin-edit-actions">
+          <button type="button" className="itin-link-btn itin-delete-btn" onClick={() => deleteTripDay(day.id)}>
+            Delete day
+          </button>
+          <button type="button" className="itin-done-btn" onClick={() => setEditingDayId(null)}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="itin-panel">
+      <section className="itin-overview" aria-label="Start date and tags">
+        <div className="itin-stats">
+          <label className="itin-stat itin-start-date">
+            <span className="itin-stat-label">Starts</span>
+            <input
+              id="trip-start-date"
+              type="date"
+              value={currentTrip.startDate || ''}
+              onChange={(e) => updateStartDate(e.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="itin-tags">
+          {(currentTrip.tags || []).map(tag => (
+            <span className="itin-tag" key={tag}>
+              {tag}
+              <button
+                type="button"
+                className="itin-tag-remove"
+                aria-label={`Remove ${tag} tag`}
+                onClick={() => removeTripTag(tag)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
           <form
-            className="trip-tags-form"
+            className="itin-tag-form"
             onSubmit={event => {
               event.preventDefault();
               addTripTag();
@@ -130,328 +421,80 @@ export function TripTab({
           >
             <input
               aria-label="New trip tag"
-              placeholder="Add a tag"
+              placeholder="+ Add tag"
               value={tripTagInput}
               onChange={event => setTripTagInput(event.target.value)}
             />
-            <button type="submit" disabled={!tripTagInput.trim()}>Add</button>
           </form>
         </div>
       </section>
-      <div className="trip-days">
-        <div className="trip-days-header">
-          <h2>Trip Days</h2>
-          <button onClick={addTripDay}>+ Add Day</button>
+
+      {days.length === 0 || !selectedDay ? (
+        <div className="itin-empty">
+          <h2>Plan your first day</h2>
+          <p>Add a day for each night of the trip. Give it a location and the forecast shows up right here.</p>
+          <button type="button" className="itin-done-btn" onClick={addTripDay}>+ Add day</button>
         </div>
-        { (currentTrip.days || []).length === 0 ? (
-          <div className="weather-placeholder">
-            <h2>No Days Added</h2>
-            <p>Add days for your itinerary and enter a location for each day.</p>
-          </div>
-        ) : (
-          <div className="day-list">
-            {(currentTrip.days || []).map((day, index) => (
-              <div
-                key={day.id}
-                className={`day-summary-card ${draggedDayId === day.id ? 'dragging' : ''} ${dragOverDayId === day.id ? 'drag-over' : ''}`}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOverDayId(day.id);
-                }}
-                onDragLeave={() => setDragOverDayId(null)}
-                onDrop={() => {
-                  if (draggedDayId && draggedDayId !== day.id) {
-                    reorderTripDays(draggedDayId, day.id);
-                  }
-                  setDragOverDayId(null);
-                }}
-              >
-                <div className="day-summary-header">
-                  <div className="day-title-badge">
-                    <span
-                      className="drag-handle"
-                      title="Drag to reorder"
-                      draggable
-                      onDragStart={(e) => {
-                        e.stopPropagation();
-                        setDraggedDayId(day.id);
-                      }}
-                      onDragEnd={(e) => {
-                        e.stopPropagation();
-                        setDraggedDayId(null);
-                      }}
-                    >
-                      ⋮⋮
-                    </span>
-                    <h3>Day {index + 1}</h3>
-                  </div>
-                  <div className="day-summary-actions">
-                    <button
-                      type="button"
-                      className="day-gear-btn"
-                      onClick={() => setEditingDayId(day.id)}
-                      title="Edit Day details"
-                    >
-                      ⚙️ Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="day-remove-btn"
-                      onClick={() => deleteTripDay(day.id)}
-                      title="Remove Day"
-                    >
-                      🗑️ Remove
-                    </button>
-                  </div>
-                </div>
-
-                <div className="day-summary-body">
-                  <div className="day-summary-location">
-                    <span className="location-icon">📍</span>
-                    <span className="location-text">
-                      {day.location ? renderTextWithLinks(day.location) : <em className="placeholder-text">No location specified</em>}
-                    </span>
-                  </div>
-
-                  {day.description && (
-                    <div className="day-summary-description">
-                      <p>{renderTextWithLinks(day.description)}</p>
-                    </div>
-                  )}
-
-                  <div className="day-summary-activities">
-                    <div className="day-summary-activities-title">
-                      Activities ({(day.activities || []).length})
-                    </div>
-                    {(!day.activities || day.activities.length === 0) ? (
-                      <p className="no-activities-text">No activities planned for this day.</p>
-                    ) : (
-                      <div className="day-summary-activities-grid">
-                        {day.activities.map((act) => (
-                          <div key={act.id} className="activity-summary-card">
-                            <div className="activity-summary-header">
-                              <span className="activity-type-badge">
-                                {act.type === 'hiking' ? '🥾 Hiking' : act.type === 'ski-touring' ? '🎿 Ski Touring' : `🎯 ${act.type}`}
-                              </span>
-                              <span className={`activity-importance-pill ${act.importance}`}>
-                                {act.importance}
-                              </span>
-                            </div>
-
-                            {(act.miles || act.elevationGain || act.elevationLost) && (
-                              <div className="activity-metrics-row">
-                                {act.miles && <span className="metric-pill">📏 {act.miles} mi</span>}
-                                {act.elevationGain && <span className="metric-pill gain">📈 +{act.elevationGain} ft</span>}
-                                {act.elevationLost && <span className="metric-pill loss">📉 -{act.elevationLost} ft</span>}
-                              </div>
-                            )}
-
-                            {act.description && (
-                              <p className="activity-summary-desc">{renderTextWithLinks(act.description)}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {(() => {
-        const editingDay = (currentTrip.days || []).find(d => d.id === editingDayId);
-        const editingDayIndex = (currentTrip.days || []).findIndex(d => d.id === editingDayId);
-        if (!editingDay || editingDayIndex === -1) return null;
-
-        return (
-          <div
-            className="day-edit-modal-overlay"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setEditingDayId(null);
-            }}
-          >
-            <div className="day-edit-modal-content">
-              <div className="day-edit-modal-header">
-                <h2>Edit Day {editingDayIndex + 1}</h2>
-                <button
-                  type="button"
-                  className="day-edit-modal-close"
-                  onClick={() => setEditingDayId(null)}
-                  title="Close modal"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="day-edit-modal-body">
-                <label className="day-field">
-                  <span className="day-field-label">Location</span>
-                  <div className="day-location-row">
-                    <input
-                      type="text"
-                      className="day-location-input"
-                      placeholder="e.g. Boulder, CO or 40.1234, -105.1234"
-                      value={editingDay.location}
-                      onChange={(e) => updateTripDayLocation(editingDay.id, e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          (e.target as HTMLInputElement).blur();
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="map-picker-btn"
-                      title="Pick location on map"
-                      onClick={() => setMapPickerDayId(editingDay.id)}
-                    >
-                      📍
-                    </button>
-                  </div>
-                </label>
-
-                <label className="day-field day-description-field">
-                  <span className="day-field-label">Description</span>
-                  <textarea
-                    className="day-description-input"
-                    placeholder="Describe the plan for this day..."
-                    value={editingDay.description || ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      updateCurrentTrip(trip => {
-                        const days = [...(trip.days || [])];
-                        const targetIdx = days.findIndex(d => d.id === editingDay.id);
-                        if (targetIdx !== -1) {
-                          days[targetIdx] = { ...days[targetIdx], description: val };
-                        }
-                        return { ...trip, days, lastModified: Date.now() };
-                      });
+      ) : (
+        <>
+          <div className="itin-strip-scroll">
+            <ol className="itin-strip" aria-label="Trip days">
+              {days.map((day, index) => {
+                const date = getCalendarDate(currentTrip.startDate, index);
+                const row = getWeatherRow(day, index);
+                const miles = getDayMiles(day);
+                const gain = getDayGain(day);
+                const isSelected = index === selectedIndex;
+                return (
+                  <li
+                    key={day.id}
+                    className={`itin-tile-slot ${draggedDayId === day.id ? 'dragging' : ''} ${dragOverDayId === day.id ? 'drag-over' : ''}`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOverDayId(day.id);
                     }}
-                  />
-                </label>
-
-                <div className="day-activities">
-                  <div className="day-activities-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3>Activities ({(editingDay.activities || []).length})</h3>
+                    onDragLeave={() => setDragOverDayId(null)}
+                    onDrop={() => {
+                      if (draggedDayId && draggedDayId !== day.id) reorderTripDays(draggedDayId, day.id);
+                      setDragOverDayId(null);
+                    }}
+                  >
                     <button
                       type="button"
-                      className="add-activity-btn"
-                      onClick={() => addTripDayActivity(editingDay.id)}
+                      ref={isSelected ? selectedTileRef : undefined}
+                      className={`itin-tile ${isSelected ? 'selected' : ''}`}
+                      aria-pressed={isSelected}
+                      draggable
+                      title="Drag to reorder"
+                      onClick={() => selectDay(day.id)}
+                      onDragStart={() => setDraggedDayId(day.id)}
+                      onDragEnd={() => setDraggedDayId(null)}
                     >
-                      + Add Activity
+                      <span className="itin-tile-date">
+                        {date ? `${date.weekday} ${date.day} · ` : ''}Day {index + 1}
+                      </span>
+                      <span className="itin-tile-location">{day.location || 'No location'}</span>
+                      <DayForecastTemps row={row} />
+                      <span className="itin-tile-metrics">
+                        {miles > 0 ? `${formatTripStatNumber(miles)} mi` : '\u00a0'}
+                        {gain > 0 ? ` · +${formatTripStatNumber(gain)}` : ''}
+                      </span>
+                      <DayForecastFlags row={row} limit={1} />
                     </button>
-                  </div>
-                  {(!editingDay.activities || editingDay.activities.length === 0) ? (
-                    <p className="empty-activities">No activities yet.</p>
-                  ) : (
-                    <div className="activity-list">
-                      {editingDay.activities.map((activity, activityIndex) => (
-                        <div key={activity.id} className="activity-row">
-                          <div className="activity-number">Activity {activityIndex + 1}</div>
-                          <div className="activity-fields">
-                            <label className="day-field">
-                              <span className="day-field-label">Type</span>
-                              <select
-                                value={activity.type}
-                                onChange={(e) => {
-                                  const selectedValue = e.target.value;
-                                  if (selectedValue === 'custom') {
-                                    void promptForCustomActivityType(activity.type).then(customType => {
-                                      if (customType) {
-                                        updateTripDayActivity(editingDay.id, activity.id, { type: customType });
-                                      }
-                                    });
-                                  } else {
-                                    updateTripDayActivity(editingDay.id, activity.id, { type: selectedValue });
-                                  }
-                                }}
-                              >
-                                <option value="hiking">Hiking</option>
-                                <option value="biking">Biking</option>
-                                <option value="ski-touring">Ski Touring</option>
-                                {activity.type !== 'hiking' && activity.type !== 'biking' && activity.type !== 'ski-touring' && activity.type !== 'custom' && (
-                                  <option value={activity.type}>{activity.type}</option>
-                                )}
-                                <option value="custom">Custom</option>
-                              </select>
-                            </label>
-                            <label className="day-field">
-                              <span className="day-field-label">Importance</span>
-                              <select
-                                value={activity.importance}
-                                onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { importance: e.target.value as TripActivity['importance'] })}
-                              >
-                                <option value="mandatory">Mandatory</option>
-                                <option value="optional">Optional</option>
-                              </select>
-                            </label>
-                            <label className="day-field activity-description-field">
-                              <span className="day-field-label">Description</span>
-                              <textarea
-                                placeholder="Describe this activity..."
-                                value={activity.description}
-                                onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { description: e.target.value })}
-                              />
-                            </label>
-                            <label className="day-field">
-                              <span className="day-field-label">Miles</span>
-                              <input
-                                type="text"
-                                placeholder="Miles"
-                                value={activity.miles}
-                                onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { miles: e.target.value })}
-                              />
-                            </label>
-                            <label className="day-field">
-                              <span className="day-field-label">Elevation Gain</span>
-                              <input
-                                type="text"
-                                placeholder="Elevation gain"
-                                value={activity.elevationGain}
-                                onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { elevationGain: e.target.value })}
-                              />
-                            </label>
-                            <label className="day-field">
-                              <span className="day-field-label">Elevation Lost</span>
-                              <input
-                                type="text"
-                                placeholder="Elevation lost"
-                                value={activity.elevationLost}
-                                onChange={(e) => updateTripDayActivity(editingDay.id, activity.id, { elevationLost: e.target.value })}
-                              />
-                            </label>
-                          </div>
-                          <button
-                            type="button"
-                            className="delete-activity-btn"
-                            onClick={() => deleteTripDayActivity(editingDay.id, activity.id)}
-                            title="Remove activity"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="day-edit-modal-footer">
-                <button
-                  type="button"
-                  className="day-edit-done-btn"
-                  onClick={() => setEditingDayId(null)}
-                >
-                  Done
+                  </li>
+                );
+              })}
+              <li className="itin-tile-slot">
+                <button type="button" className="itin-tile itin-tile-add" onClick={addTripDay}>
+                  <span>+ Add day</span>
+                  {nextDate && <span className="itin-tile-date">{nextDate.weekday} {nextDate.day}</span>}
                 </button>
-              </div>
-            </div>
+              </li>
+            </ol>
           </div>
-        );
-      })()}
+          {renderDayDetail(selectedDay, selectedIndex)}
+        </>
+      )}
     </div>
   );
 }
