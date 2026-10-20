@@ -193,10 +193,9 @@
 
 .pk-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.75rem;
-  padding: 0.15rem 0.5rem 0.15rem 0;
+  gap: 0.5rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 10px;
 }
 
@@ -205,12 +204,12 @@
 }
 
 .pk-row-main {
-  flex: 1 1 220px;
+  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.6rem 0.25rem 0.6rem 0.75rem;
+  padding: 0.6rem 0.25rem;
   background: transparent;
   text-align: left;
   font-weight: 400;
@@ -252,71 +251,109 @@
   line-height: 1;
 }
 
-/* One-tap status strip */
-.pk-strip {
-  display: flex;
+/* Status pill on each row; opens the status wheel */
+.pk-status-btn {
   flex-shrink: 0;
-  padding: 3px;
-  gap: 2px;
-  border-radius: 9px;
-  background: var(--pk-hover);
-}
-
-.pk-row:hover .pk-strip {
-  background: var(--white);
-}
-
-.pk-strip-btn {
-  padding: 0.35rem 0.6rem;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted-text);
-  font-size: 0.8rem;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.pk-strip-btn:hover {
-  filter: none;
-  color: var(--text-color);
-}
-
-.pk-strip-btn.active {
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
-}
-
-.pk-strip-more {
-  position: relative;
-}
-
-.pk-strip-menu {
-  min-width: 180px;
-}
-
-.pk-strip-menu button {
-  display: flex;
+  width: 8.75rem;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-}
-
-.pk-strip-menu button.active {
-  font-weight: 600;
-}
-
-.pk-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.pk-pill {
-  flex-shrink: 0;
-  padding: 0.15rem 0.6rem;
+  gap: 0.45rem;
+  padding: 0.4rem 0.7rem;
   border-radius: 999px;
-  font-size: 0.75rem;
+  border: 1px solid transparent;
+  background: var(--pk-soft);
+  color: var(--pk-strong);
+  font-size: 0.8rem;
   font-weight: 600;
+  text-align: left;
+}
+
+.pk-status-btn:hover {
+  filter: none;
+  border-color: var(--pk-strong);
+}
+
+.pk-status-btn-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pk-strong);
+}
+
+.pk-status-btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Status wheel */
+.pk-wheel-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.pk-wheel {
+  position: fixed;
+  overflow: visible;
+  filter: drop-shadow(0 10px 24px rgba(15, 23, 42, 0.25));
+  animation: pk-wheel-in 0.14s ease-out;
+  transform-origin: center;
+}
+
+@keyframes pk-wheel-in {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.pk-wedge {
+  cursor: pointer;
+  outline: none;
+}
+
+.pk-wedge path {
+  fill: var(--pk-soft);
+  stroke: #ffffff;
+  stroke-width: 3;
+  transition: fill 0.12s;
+}
+
+.pk-wedge text {
+  fill: var(--pk-strong);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.pk-wedge:hover path,
+.pk-wedge:focus-visible path,
+.pk-wedge.current path {
+  fill: var(--pk-strong);
+}
+
+.pk-wedge:hover text,
+.pk-wedge:focus-visible text,
+.pk-wedge.current text {
+  fill: #ffffff;
+}
+
+.pk-wedge:focus-visible path {
+  stroke: #1e293b;
+}
+
+.pk-wheel-center {
+  cursor: pointer;
+}
+
+.pk-wheel-center circle {
+  fill: #ffffff;
+}
+
+.pk-wheel-center text {
+  fill: #64748b;
+  font-size: 16px;
 }
 
 /* Status colors; "not packed" stays neutral so a fresh list doesn't look like errors */
@@ -328,17 +365,7 @@
 .pk-status-needs-charging { background: #ede9fe; color: #6d28d9; }
 .pk-status-need-to-buy { background: #ffedd5; color: #c2410c; }
 
-.pk-strip-btn.active.pk-status-fully-packed { background: var(--accent-color); color: #fff; }
-.pk-strip-btn.active.pk-status-in-car { background: #2563eb; color: #fff; }
 .pk-chip.active.pk-status-not-packed { border-color: var(--border-color); }
-
-.pk-dot.pk-status-not-packed { background: #94a3b8; }
-.pk-dot.pk-status-set-aside { background: #d97706; }
-.pk-dot.pk-status-fully-packed { background: #16a34a; }
-.pk-dot.pk-status-in-car { background: #2563eb; }
-.pk-dot.pk-status-not-bringing { background: #9ca3af; }
-.pk-dot.pk-status-needs-charging { background: #7c3aed; }
-.pk-dot.pk-status-need-to-buy { background: #ea580c; }
 
 .pk-empty {
   margin: 0;
@@ -628,7 +655,7 @@
   }
 
   .pk-row {
-    padding: 0.25rem 0.5rem 0.6rem;
+    padding: 0.25rem 0.5rem;
     border-bottom: 1px solid var(--pk-muted-line);
     border-radius: 0;
   }
@@ -637,21 +664,9 @@
     padding-left: 0.25rem;
   }
 
-  .pk-strip {
-    width: 100%;
-  }
-
-  .pk-strip > .pk-strip-btn,
-  .pk-strip-more {
-    flex: 1;
-  }
-
-  .pk-strip-more .pk-strip-btn {
-    width: 100%;
-  }
-
-  .pk-strip-btn {
-    padding: 0.5rem 0.25rem;
+  .pk-status-btn {
+    width: 8.25rem;
+    padding-inline: 0.55rem;
   }
 
   /* Bottom sheet on phones */
@@ -675,7 +690,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pk-sheet {
+  .pk-sheet,
+  .pk-wheel {
     animation: none;
   }
 
