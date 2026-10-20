@@ -73,9 +73,12 @@ export const hasForecast = (row: WeatherRow | undefined): row is WeatherRow =>
 
 export const formatTemp = (value: number) => `${((value * 9) / 5 + 32).toFixed(1)}°F`;
 export const formatWind = (value: number | undefined) => value == null ? '-' : `${(value * 0.621371).toFixed(1)} mph`;
-export const formatVisibility = (value: number | undefined) => value == null ? '-' : `${(value * 0.621371).toFixed(1)} mi`;
+// Open-Meteo units: visibility and snow depth in meters, snowfall in cm,
+// precipitation in mm, wind in km/h.
+export const formatVisibility = (value: number | undefined) => value == null ? '-' : `${(value / 1609.34).toFixed(1)} mi`;
 export const formatPrecip = (value: number | undefined) => value == null ? '-' : `${(value / 25.4).toFixed(2)} in`;
 export const formatSnow = (value: number | undefined) => value == null ? '-' : `${(value / 2.54).toFixed(2)} in`;
+export const formatSnowDepth = (value: number | undefined) => value == null ? '-' : `${Math.round(value * 39.3701)} in`;
 export const formatElevation = (value: number | undefined) => value == null ? '-' : `${(value * 3.28084).toFixed(0)} ft`;
 
 // Temperature at `altitudeFeet`, extrapolated from a reading taken at `baseElevationM`.

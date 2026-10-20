@@ -281,12 +281,6 @@
   cursor: default;
 }
 
-.itin-flags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
 .itin-legs {
   list-style: none;
   margin: 0 0 0 0.4rem;
@@ -344,11 +338,6 @@
 
 .itin-detail-side .itin-forecast {
   grid-template-columns: 1fr;
-}
-
-.itin-forecast-empty {
-  font-size: 0.84rem;
-  color: var(--muted-text);
 }
 
 .itin-notes {
@@ -571,132 +560,6 @@
   color: #dc2626;
 }
 
-/* ── Weather ──────────────────────────────────────────────────── */
-
-.itin-wx-temp {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  font-size: 0.88rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  margin-right: 0.15rem;
-}
-
-.itin-wx-high {
-  font-weight: 700;
-}
-
-.itin-wx-low,
-.itin-wx-unavailable {
-  color: var(--muted-text);
-}
-
-.itin-wx-unavailable {
-  font-size: 0.78rem;
-}
-
-.itin-flag {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.itin-flag.storm { background: #ede9fe; color: #6d28d9; }
-.itin-flag.wet { background: #e0f2fe; color: #0369a1; }
-.itin-flag.snow { background: #f1f5f9; color: #334155; }
-.itin-flag.wind { background: #fef3c7; color: #b45309; }
-
-.itin-forecast {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 0.75rem 1.25rem;
-  background: #f8fafc;
-  border-radius: 10px;
-  padding: 0.75rem 0.9rem;
-}
-
-.itin-forecast h4 {
-  margin: 0 0 0.5rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted-text);
-}
-
-.itin-elev {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.itin-elev-row {
-  display: grid;
-  grid-template-columns: 4.5rem 1fr 4.5rem;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.itin-elev-alt {
-  text-align: right;
-  color: var(--muted-text);
-}
-
-.itin-elev-row.here .itin-elev-alt,
-.itin-elev-row.here .itin-elev-temp {
-  color: var(--text-color);
-  font-weight: 700;
-}
-
-.itin-elev-track {
-  position: relative;
-  height: 8px;
-  border-radius: 4px;
-  background: #e2e8f0;
-}
-
-.itin-elev-track i {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 4px;
-  background: linear-gradient(90deg, #38bdf8, #f59e0b);
-}
-
-.itin-facts {
-  margin: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.4rem 1rem;
-}
-
-.itin-facts dt {
-  font-size: 0.7rem;
-  color: var(--muted-text);
-}
-
-.itin-facts dd {
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.itin-forecast-source {
-  grid-column: 1 / -1;
-  font-size: 0.72rem;
-  color: #94a3b8;
-}
-
-.itin-forecast-source a {
-  color: inherit;
-}
-
 @media (max-width: 720px) {
   .itin-detail {
     grid-template-columns: 1fr;
@@ -705,11 +568,6 @@
 }
 
 @media (max-width: 640px) {
-
-  .itin-forecast {
-    grid-template-columns: 1fr;
-  }
-
   .itin-activity-editor {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

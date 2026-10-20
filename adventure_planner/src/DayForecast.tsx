@@ -1,11 +1,11 @@
-import { ALTITUDES, formatSnow, hasForecast, isStormyWeatherCode } from './weatherUtils';
+import './DayForecast.css';
+import { ALTITUDES, formatSnow, formatSnowDepth, formatVisibility, hasForecast, isStormyWeatherCode } from './weatherUtils';
 import type { WeatherRow } from './weatherUtils';
 import { getAqiCategory, weatherCodeEmoji } from './tripUtils';
 
 const M_TO_FT = 3.28084;
 const KMH_TO_MPH = 0.621371;
 const MM_TO_IN = 1 / 25.4;
-const M_PER_MILE = 1609.34;
 const WINDY_GUST_MPH = 30;
 
 // highLow values are stored as formatted strings like "63.4°F" or "-".
@@ -136,11 +136,11 @@ export function DayForecastDetail({ row, weatherLinks }: { row: WeatherRow; weat
   }
   if (row.freezingLevel != null) facts.push({ label: 'Freezing level', value: formatFeet(row.freezingLevel) });
   if (row.snowfall != null) facts.push({ label: 'New snow', value: row.snowfall > 0 ? formatSnow(row.snowfall) : 'None' });
-  // snow_depth is reported in meters and visibility in meters; formatSnow expects cm.
-  if (row.snowDepth != null && row.snowDepth > 0) facts.push({ label: 'Snow depth', value: formatSnow(row.snowDepth * 100) });
+  // Snow depth under half an inch rounds to 0, so treat it as bare ground.
+  if (row.snowDepth != null && row.snowDepth >= 0.0127) facts.push({ label: 'Snow depth', value: formatSnowDepth(row.snowDepth) });
   if (row.cloudCover != null) facts.push({ label: 'Cloud cover', value: `${Math.round(row.cloudCover)}%` });
   if (row.humidity != null) facts.push({ label: 'Humidity', value: `${row.humidity}%` });
-  if (row.visibility != null) facts.push({ label: 'Visibility', value: `${(row.visibility / M_PER_MILE).toFixed(1)} mi` });
+  if (row.visibility != null) facts.push({ label: 'Visibility', value: formatVisibility(row.visibility) });
   if (typeof row.aqi === 'number') facts.push({ label: 'AQI', value: `${row.aqi} ${AQI_LABELS[getAqiCategory(row.aqi)] ?? ''}`.trim() });
 
   const links = (weatherLinks || '')
@@ -187,5 +187,64 @@ export function DayForecastDetail({ row, weatherLinks }: { row: WeatherRow; weat
         ))}
       </div>
     </div>
+  );
+}
+
+// Precip chance and peak gusts, for day tiles that have room for one more line.
+export function DayForecastStats({ row }: { row: WeatherRow | undefined }) {
+  if (!hasForecast(row)) return null;
+  const parts: string[] = [];
+  if (row.precipitationProbability != null) parts.push(`${row.precipitationProbability}% precip`);
+  if (row.windGust != null) parts.push(`gusts ${Math.round(row.windGust * KMH_TO_MPH)} mph`);
+  if (parts.length === 0) return null;
+  return <span className="itin-wx-stats">{parts.join(' · ')}</span>;
+}
+
+// Trip-wide extremes: the coldest low and warmest high at each day's forecast
+// elevation, the wettest and windiest days, and total new snow.
+export function TripForecastOutlook({ rows, dayCount }: { rows: WeatherRow[]; dayCount: number }) {
+  const forecastRows = rows.filter(hasForecast);
+  if (forecastRows.length === 0) return null;
+
+  const temps = forecastRows
+    .map(row => getHeadlineTemps(row))
+    .filter((point): point is ElevationTemp => !!point);
+  const maxBy = (pick: (row: WeatherRow) => number | undefined) => forecastRows.reduce<WeatherRow | undefined>(
+    (best, row) => (pick(row) ?? -Infinity) > (best ? pick(best) ?? -Infinity : -Infinity) ? row : best,
+    undefined,
+  );
+  const wettest = maxBy(row => row.precipitationProbability);
+  const windiest = maxBy(row => row.windGust);
+  const newSnow = forecastRows.reduce((sum, row) => sum + (row.snowfall ?? 0), 0);
+
+  const stats: { label: string; value: string }[] = [
+    {
+      label: 'Forecast',
+      value: forecastRows.length === dayCount ? `All ${dayCount} days` : `${forecastRows.length} of ${dayCount} days`,
+    },
+  ];
+  if (temps.length > 0) {
+    stats.push({
+      label: 'Temps',
+      value: `${roundTemp(Math.min(...temps.map(point => point.low)))} to ${roundTemp(Math.max(...temps.map(point => point.high)))}`,
+    });
+  }
+  if (wettest?.precipitationProbability != null) {
+    stats.push({ label: 'Wettest', value: `${wettest.precipitationProbability}% · Day ${wettest.dayIndex + 1}` });
+  }
+  if (windiest?.windGust != null) {
+    stats.push({ label: 'Strongest gusts', value: `${Math.round(windiest.windGust * KMH_TO_MPH)} mph · Day ${windiest.dayIndex + 1}` });
+  }
+  if (newSnow > 0) stats.push({ label: 'New snow', value: formatSnow(newSnow) });
+
+  return (
+    <dl className="itin-outlook">
+      {stats.map(stat => (
+        <div key={stat.label}>
+          <dt>{stat.label}</dt>
+          <dd>{stat.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

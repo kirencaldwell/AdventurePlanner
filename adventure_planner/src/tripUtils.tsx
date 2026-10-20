@@ -1,7 +1,8 @@
 import type { User } from '@supabase/supabase-js';
 import { GROUP_GEAR_CATEGORY_NAME, INITIAL_CATEGORIES } from './constants';
 import type { Category, GearClosetItem, Item, StatusId, Trip, TripDay } from './types';
-import { getTodayString } from './weatherUtils';
+import { getDayDate, getTodayString } from './weatherUtils';
+import type { WeatherRow } from './weatherUtils';
 
 export const generateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -595,4 +596,24 @@ export const getActivityKind = (activityType: string | undefined): ActivityKind 
   if (type.includes('climb') || type.includes('scramble') || type.includes('mountaineer')) return 'climb';
   if (/hik|backpack|walk|trail|run|trek/.test(type)) return 'hike';
   return 'other';
+};
+
+// Calendar labels for the trip day at `index`, or null without a start date.
+export const getCalendarDate = (startDate: string | undefined, index: number) => {
+  if (!startDate) return null;
+  const date = new Date(`${getDayDate(startDate, index)}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    weekday: date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }),
+    day: date.toLocaleDateString(undefined, { day: 'numeric', timeZone: 'UTC' }),
+    full: date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }),
+    long: date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' }),
+  };
+};
+
+// Weather rows are keyed by day position; ignore a row whose location no
+// longer matches (the day was moved or edited and the forecast is refetching).
+export const getDayWeatherRow = (weatherRows: WeatherRow[], day: TripDay, index: number) => {
+  const row = weatherRows.find(candidate => candidate.dayIndex === index);
+  return row && row.location === day.location ? row : undefined;
 };

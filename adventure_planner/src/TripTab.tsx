@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import './TripTab.css';
 import { DayForecastDetail, DayForecastFlags, DayForecastTemps } from './DayForecast';
-import { formatTripStatNumber, parseTripNumber, renderTextWithLinks } from './tripUtils';
-import { getDayDate, hasForecast } from './weatherUtils';
+import { formatTripStatNumber, getCalendarDate, getDayWeatherRow, parseTripNumber, renderTextWithLinks } from './tripUtils';
+import { hasForecast } from './weatherUtils';
 import type { WeatherRow } from './weatherUtils';
 import type { Trip, TripActivity, TripDay } from './types';
 
@@ -56,18 +56,6 @@ const formatActivityMetrics = (activity: TripActivity) => {
   return parts.join(' · ');
 };
 
-const getCalendarDate = (startDate: string | undefined, index: number) => {
-  if (!startDate) return null;
-  const date = new Date(`${getDayDate(startDate, index)}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  return {
-    weekday: date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }),
-    day: date.toLocaleDateString(undefined, { day: 'numeric', timeZone: 'UTC' }),
-    full: date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }),
-    long: date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' }),
-  };
-};
-
 export function TripTab({
   currentTrip,
   weatherRows,
@@ -98,12 +86,7 @@ export function TripTab({
   const days = currentTrip.days || [];
   const nextDate = getCalendarDate(currentTrip.startDate, days.length);
 
-  // Weather rows are keyed by day position; ignore a row whose location no
-  // longer matches (the day was moved or edited and the forecast is refetching).
-  const getWeatherRow = (day: TripDay, index: number) => {
-    const row = weatherRows.find(candidate => candidate.dayIndex === index);
-    return row && row.location === day.location ? row : undefined;
-  };
+  const getWeatherRow = (day: TripDay, index: number) => getDayWeatherRow(weatherRows, day, index);
 
   // The day being edited wins (a newly added day opens in edit mode), then
   // the picked day, then the first day.
