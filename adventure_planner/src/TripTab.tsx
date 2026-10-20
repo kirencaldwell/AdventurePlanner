@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import './TripTab.css';
-import { DayForecastDetail, DayForecastSummary } from './DayForecast';
-import { calcPersonPackingStats, calculateTripStats, formatWeight, parseTripNumber, renderTextWithLinks } from './tripUtils';
+import { DayForecastDetail, DayForecastFlags, DayForecastTemps } from './DayForecast';
+import { calcPersonPackingStats, calculateTripStats, formatTripStatNumber, formatWeight, parseTripNumber, renderTextWithLinks } from './tripUtils';
 import { getDayDate, hasForecast } from './weatherUtils';
 import type { WeatherRow } from './weatherUtils';
 import type { GearClosetItem, Trip, TripActivity, TripDay } from './types';
@@ -64,8 +64,8 @@ const getCalendarDate = (startDate: string | undefined, index: number) => {
   return {
     weekday: date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }),
     day: date.toLocaleDateString(undefined, { day: 'numeric', timeZone: 'UTC' }),
-    month: date.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }),
     full: date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }),
+    long: date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' }),
   };
 };
 
@@ -95,7 +95,8 @@ export function TripTab({
   updateTripDayActivity,
   deleteTripDayActivity,
 }: TripTabProps) {
-  const [expandedForecastIds, setExpandedForecastIds] = useState<Set<string>>(new Set());
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
+  const selectedTileRef = useRef<HTMLButtonElement>(null);
   const days = currentTrip.days || [];
   const stats = calculateTripStats(currentTrip);
   const packingStats = currentTrip.people.length > 0 ? calcPersonPackingStats(currentTrip, undefined, gearCloset) : [];
@@ -110,76 +111,150 @@ export function TripTab({
     return row && row.location === day.location ? row : undefined;
   };
 
-  const toggleForecast = (dayId: string) => {
-    setExpandedForecastIds(prev => {
-      const next = new Set(prev);
-      if (next.has(dayId)) next.delete(dayId);
-      else next.add(dayId);
-      return next;
-    });
+  // The day being edited wins (a newly added day opens in edit mode), then
+  // the picked day, then the first day.
+  const selectedIndex = Math.max(0, days.findIndex(day => day.id === (
+    days.some(day => day.id === editingDayId) ? editingDayId : selectedDayId
+  )));
+  const selectedDay = days[selectedIndex] as TripDay | undefined;
+
+  useEffect(() => {
+    selectedTileRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [selectedDay?.id]);
+
+  const selectDay = (dayId: string) => {
+    setSelectedDayId(dayId);
+    if (editingDayId && editingDayId !== dayId) setEditingDayId(null);
   };
 
-  const updateDayDescription = (dayId: string, description: string) => {
+  const getDayMiles = (day: TripDay) =>
+    (day.activities || []).reduce((sum, activity) => sum + parseTripNumber(activity.miles), 0);
+  const getDayGain = (day: TripDay) =>
+    (day.activities || []).reduce((sum, activity) => sum + parseTripNumber(activity.elevationGain), 0);
+
+  const updateDay = (dayId: string, updates: Partial<Pick<TripDay, 'description' | 'notes'>>) => {
     updateCurrentTrip(trip => ({
       ...trip,
-      days: (trip.days || []).map(day => (day.id === dayId ? { ...day, description } : day)),
+      days: (trip.days || []).map(day => (day.id === dayId ? { ...day, ...updates } : day)),
       lastModified: Date.now(),
     }));
   };
 
-  const renderDayView = (day: TripDay, index: number) => {
+
+  const renderDayDetail = (day: TripDay, index: number) => {
     const row = getWeatherRow(day, index);
-    const isExpanded = expandedForecastIds.has(day.id) && hasForecast(row);
+    const date = getCalendarDate(currentTrip.startDate, index);
+    const elevationFt = hasForecast(row) && row.locationElevation != null
+      ? Math.round(row.locationElevation * 3.28084)
+      : null;
+    const subtitle = [
+      date?.long,
+      `Day ${index + 1} of ${days.length}`,
+      elevationFt != null ? `forecast at ${elevationFt.toLocaleString()} ft` : null,
+    ].filter(Boolean).join(' · ');
+
     return (
-      <div className="itin-card">
-        <div className="itin-card-top">
-          <div className="itin-place">
-            <span className="itin-day-number">Day {index + 1}</span>
-            <h3 className="itin-location">
-              {day.location ? renderTextWithLinks(day.location) : <span className="itin-placeholder">No location yet</span>}
-            </h3>
+      <section className="itin-detail" aria-label={`Day ${index + 1} details`}>
+        <div className="itin-detail-main">
+          <div className="itin-detail-head">
+            <div className="itin-place">
+              <h3 className="itin-detail-title">
+                {day.location ? renderTextWithLinks(day.location) : <span className="itin-placeholder">No location yet</span>}
+              </h3>
+              <span className="itin-detail-sub">{subtitle}</span>
+            </div>
+            <div className="itin-day-nav">
+              <button
+                type="button"
+                className="itin-nav-btn"
+                aria-label="Previous day"
+                disabled={index === 0}
+                onClick={() => selectDay(days[index - 1].id)}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="itin-nav-btn"
+                aria-label="Next day"
+                disabled={index === days.length - 1}
+                onClick={() => selectDay(days[index + 1].id)}
+              >
+                ›
+              </button>
+            </div>
           </div>
-          <DayForecastSummary row={row} />
+
+          {editingDayId === day.id ? renderDayEditor(day) : (
+            <>
+              <DayForecastFlags row={row} />
+              {day.description && <p className="itin-description">{renderTextWithLinks(day.description)}</p>}
+              {(day.activities || []).length > 0 ? (
+                <ol className="itin-legs">
+                  {(day.activities || []).map(activity => {
+                    const metrics = formatActivityMetrics(activity);
+                    return (
+                      <li key={activity.id} className={`itin-leg ${activity.importance === 'optional' ? 'optional' : ''}`}>
+                        <div className="itin-leg-title">
+                          <span className="itin-activity-type">{activityLabel(activity.type)}</span>
+                          {activity.importance === 'optional' && <span className="itin-optional">optional</span>}
+                        </div>
+                        {metrics && <div className="itin-activity-metrics">{metrics}</div>}
+                        {activity.description && (
+                          <p className="itin-activity-desc">{renderTextWithLinks(activity.description)}</p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="itin-muted">No activities planned yet.</p>
+              )}
+              <div className="itin-detail-actions">
+                <button type="button" className="itin-link-btn" onClick={() => setEditingDayId(day.id)}>
+                  Edit day
+                </button>
+                <button
+                  type="button"
+                  className="itin-link-btn"
+                  onClick={() => {
+                    addTripDayActivity(day.id);
+                    setEditingDayId(day.id);
+                  }}
+                >
+                  + Add activity
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
-        {day.description && <p className="itin-description">{renderTextWithLinks(day.description)}</p>}
-
-        {(day.activities || []).length > 0 && (
-          <ul className="itin-activities">
-            {(day.activities || []).map(activity => {
-              const metrics = formatActivityMetrics(activity);
-              return (
-                <li key={activity.id} className="itin-activity">
-                  <span className="itin-activity-type">{activityLabel(activity.type)}</span>
-                  {metrics && <span className="itin-activity-metrics">{metrics}</span>}
-                  {activity.importance === 'optional' && <span className="itin-optional">optional</span>}
-                  {activity.description && (
-                    <span className="itin-activity-desc">{renderTextWithLinks(activity.description)}</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {isExpanded && row && <DayForecastDetail row={row} weatherLinks={day.weatherLinks} />}
-
-        <div className="itin-card-actions">
+        <div className="itin-detail-side">
           {hasForecast(row) ? (
-            <button type="button" className="itin-link-btn" aria-expanded={isExpanded} onClick={() => toggleForecast(day.id)}>
-              {isExpanded ? 'Hide forecast' : 'Forecast'}
-            </button>
-          ) : <span />}
-          <button type="button" className="itin-link-btn" onClick={() => setEditingDayId(day.id)}>
-            Edit
-          </button>
+            <DayForecastDetail row={row} weatherLinks={day.weatherLinks} />
+          ) : (
+            <div className="itin-forecast itin-forecast-empty">
+              {!currentTrip.startDate
+                ? 'Set a start date to see the forecast for this day.'
+                : !day.location
+                  ? 'Add a location to see the forecast for this day.'
+                  : 'No forecast yet. Forecasts show up about two weeks out.'}
+            </div>
+          )}
+          <textarea
+            aria-label="Notes for this day"
+            className="itin-input itin-textarea itin-notes"
+            placeholder="Your notes for this day..."
+            value={day.notes || ''}
+            onChange={(e) => updateDay(day.id, { notes: e.target.value })}
+          />
         </div>
-      </div>
+      </section>
     );
   };
 
   const renderDayEditor = (day: TripDay) => (
-    <div className="itin-card editing">
+    <div className="itin-editor">
       <div className="itin-edit-row">
         <input
           type="text"
@@ -202,7 +277,7 @@ export function TripTab({
         className="itin-input itin-textarea"
         placeholder="Plan for the day, water sources, permits..."
         value={day.description || ''}
-        onChange={(e) => updateDayDescription(day.id, e.target.value)}
+        onChange={(e) => updateDay(day.id, { description: e.target.value })}
       />
 
       {(day.activities || []).length > 0 && (
@@ -405,68 +480,71 @@ export function TripTab({
         </div>
       </section>
 
-      {days.length === 0 ? (
+      {days.length === 0 || !selectedDay ? (
         <div className="itin-empty">
           <h2>Plan your first day</h2>
           <p>Add a day for each night of the trip. Give it a location and the forecast shows up right here.</p>
           <button type="button" className="itin-done-btn" onClick={addTripDay}>+ Add day</button>
         </div>
       ) : (
-        <ol className="itin-timeline">
-          {days.map((day, index) => {
-            const date = getCalendarDate(currentTrip.startDate, index);
-            const isEditing = editingDayId === day.id;
-            return (
-              <li
-                key={day.id}
-                className={`itin-day ${draggedDayId === day.id ? 'dragging' : ''} ${dragOverDayId === day.id ? 'drag-over' : ''}`}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOverDayId(day.id);
-                }}
-                onDragLeave={() => setDragOverDayId(null)}
-                onDrop={() => {
-                  if (draggedDayId && draggedDayId !== day.id) reorderTripDays(draggedDayId, day.id);
-                  setDragOverDayId(null);
-                }}
-              >
-                <div
-                  className="itin-date"
-                  draggable
-                  title="Drag to reorder"
-                  onDragStart={(e) => {
-                    e.stopPropagation();
-                    setDraggedDayId(day.id);
-                  }}
-                  onDragEnd={(e) => {
-                    e.stopPropagation();
-                    setDraggedDayId(null);
-                  }}
-                >
-                  {date ? (
-                    <>
-                      <span className="itin-date-weekday">{date.weekday}</span>
-                      <span className="itin-date-day">{date.day}</span>
-                      <span className="itin-date-month">{date.month}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="itin-date-weekday">Day</span>
-                      <span className="itin-date-day">{index + 1}</span>
-                    </>
-                  )}
-                  <span className="itin-grip" aria-hidden="true">⋮⋮</span>
-                </div>
-                {isEditing ? renderDayEditor(day) : renderDayView(day, index)}
+        <>
+          <div className="itin-strip-scroll">
+            <ol className="itin-strip" aria-label="Trip days">
+              {days.map((day, index) => {
+                const date = getCalendarDate(currentTrip.startDate, index);
+                const row = getWeatherRow(day, index);
+                const miles = getDayMiles(day);
+                const gain = getDayGain(day);
+                const isSelected = index === selectedIndex;
+                return (
+                  <li
+                    key={day.id}
+                    className={`itin-tile-slot ${draggedDayId === day.id ? 'dragging' : ''} ${dragOverDayId === day.id ? 'drag-over' : ''}`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOverDayId(day.id);
+                    }}
+                    onDragLeave={() => setDragOverDayId(null)}
+                    onDrop={() => {
+                      if (draggedDayId && draggedDayId !== day.id) reorderTripDays(draggedDayId, day.id);
+                      setDragOverDayId(null);
+                    }}
+                  >
+                    <button
+                      type="button"
+                      ref={isSelected ? selectedTileRef : undefined}
+                      className={`itin-tile ${isSelected ? 'selected' : ''}`}
+                      aria-pressed={isSelected}
+                      draggable
+                      title="Drag to reorder"
+                      onClick={() => selectDay(day.id)}
+                      onDragStart={() => setDraggedDayId(day.id)}
+                      onDragEnd={() => setDraggedDayId(null)}
+                    >
+                      <span className="itin-tile-date">
+                        {date ? `${date.weekday} ${date.day} · ` : ''}Day {index + 1}
+                      </span>
+                      <span className="itin-tile-location">{day.location || 'No location'}</span>
+                      <DayForecastTemps row={row} />
+                      <span className="itin-tile-metrics">
+                        {miles > 0 ? `${formatTripStatNumber(miles)} mi` : '\u00a0'}
+                        {gain > 0 ? ` · +${formatTripStatNumber(gain)}` : ''}
+                      </span>
+                      <DayForecastFlags row={row} limit={1} />
+                    </button>
+                  </li>
+                );
+              })}
+              <li className="itin-tile-slot">
+                <button type="button" className="itin-tile itin-tile-add" onClick={addTripDay}>
+                  <span>+ Add day</span>
+                  {nextDate && <span className="itin-tile-date">{nextDate.weekday} {nextDate.day}</span>}
+                </button>
               </li>
-            );
-          })}
-          <li className="itin-add-day">
-            <button type="button" onClick={addTripDay}>
-              + Add day {days.length + 1}{nextDate ? ` (${nextDate.full})` : ''}
-            </button>
-          </li>
-        </ol>
+            </ol>
+          </div>
+          {renderDayDetail(selectedDay, selectedIndex)}
+        </>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
-/* Trip tab: trip overview strip and a day-by-day itinerary timeline. */
+/* Trip tab: trip overview, a forecast-style strip of day tiles, and the
+   selected day's detail panel. */
 
 .itin-panel {
   display: flex;
@@ -157,136 +158,252 @@
   width: 11rem;
 }
 
-/* ── Timeline ─────────────────────────────────────────────────── */
-.itin-timeline {
+/* ── Day strip ────────────────────────────────────────────────── */
+.itin-strip-scroll {
+  overflow-x: auto;
+  margin: -4px;
+  padding: 4px;
+  scroll-snap-type: x proximity;
+}
+
+.itin-strip {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.itin-day {
   display: grid;
-  grid-template-columns: 4rem minmax(0, 1fr);
-  gap: 0.9rem;
-  border-radius: 12px;
-  transition: opacity 0.2s, background 0.2s;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(8.75rem, 1fr);
+  gap: 0.5rem;
 }
 
-.itin-day.dragging {
+.itin-tile-slot {
+  display: flex;
+  scroll-snap-align: start;
+  transition: opacity 0.2s;
+}
+
+.itin-tile-slot.dragging {
   opacity: 0.5;
 }
 
-.itin-day.drag-over .itin-card {
+.itin-tile-slot.drag-over .itin-tile {
   border-color: var(--accent-color);
   border-style: dashed;
 }
 
-.itin-date {
-  position: relative;
+.itin-tile {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding-top: 0.8rem;
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--white);
+  color: var(--text-color);
+  font-weight: 400;
+  text-align: left;
 }
 
-.itin-date:active {
-  cursor: grabbing;
+.itin-tile:hover {
+  border-color: #cbd5e1;
 }
 
-/* The connecting line between days */
-.itin-date::after {
-  content: "";
-  position: absolute;
-  top: 5.6rem;
-  bottom: -0.75rem;
-  left: 50%;
-  width: 2px;
-  background: var(--border-color);
-  transform: translateX(-50%);
+.itin-tile.selected {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
 }
 
-.itin-day:nth-last-child(2) .itin-date::after {
-  display: none;
-}
-
-.itin-date-weekday,
-.itin-date-month {
+.itin-tile-date {
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   color: var(--muted-text);
+  white-space: nowrap;
 }
 
-.itin-date-day {
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.15;
+.itin-tile-location {
+  max-width: 100%;
+  font-size: 0.86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itin-tile-metrics {
+  font-size: 0.75rem;
+  color: var(--muted-text);
   font-variant-numeric: tabular-nums;
 }
 
-.itin-grip {
-  font-size: 0.75rem;
-  letter-spacing: -0.1em;
-  color: #cbd5e1;
-  opacity: 0;
-  transition: opacity 0.15s;
+.itin-tile .itin-flags {
+  margin-top: 0.1rem;
 }
 
-.itin-date:hover .itin-grip {
-  opacity: 1;
+.itin-tile-add {
+  justify-content: center;
+  align-items: center;
+  border-style: dashed;
+  border-color: #cbd5e1;
+  background: transparent;
+  color: var(--muted-text);
+  font-weight: 500;
 }
 
-.itin-card {
-  min-width: 0;
+.itin-tile-add:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+/* ── Day detail ───────────────────────────────────────────────── */
+.itin-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 1.5rem;
   background: var(--white);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 0.9rem 1rem 0.6rem;
+  padding: 1.25rem;
+}
+
+.itin-detail-main,
+.itin-detail-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.itin-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.itin-detail-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.itin-detail-sub {
+  font-size: 0.84rem;
+  color: var(--muted-text);
+}
+
+.itin-day-nav {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.itin-nav-btn {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #475569;
+}
+
+.itin-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.itin-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.itin-legs {
+  list-style: none;
+  margin: 0 0 0 0.4rem;
+  padding: 0;
+  border-left: 2px solid var(--border-color);
+}
+
+.itin-leg {
+  position: relative;
+  padding: 0.15rem 0 0.8rem 1rem;
+}
+
+.itin-leg:last-child {
+  padding-bottom: 0.2rem;
+}
+
+.itin-leg::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 0.4rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 2px solid var(--accent-color);
+}
+
+.itin-leg.optional::before {
+  border-style: dashed;
+  border-color: #94a3b8;
+}
+
+.itin-leg-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.92rem;
+}
+
+.itin-leg .itin-activity-metrics {
+  font-size: 0.82rem;
+}
+
+.itin-muted {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--muted-text);
+}
+
+.itin-detail-actions {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.itin-detail-side .itin-forecast {
+  grid-template-columns: 1fr;
+}
+
+.itin-forecast-empty {
+  font-size: 0.84rem;
+  color: var(--muted-text);
+}
+
+.itin-notes {
+  min-height: 4.5rem;
+}
+
+.itin-editor {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
 }
 
-.itin-card.editing {
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
-  padding-bottom: 0.75rem;
-}
-
-.itin-card-top {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.5rem 1rem;
-}
 
 .itin-place {
   min-width: 0;
   display: flex;
   flex-direction: column;
-}
-
-.itin-day-number {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #94a3b8;
-}
-
-.itin-location {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
 }
 
 .itin-placeholder {
@@ -301,23 +418,6 @@
   color: #475569;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.itin-activities {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.itin-activity {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.2rem 0.6rem;
-  font-size: 0.86rem;
 }
 
 .itin-activity-type {
@@ -339,7 +439,7 @@
 }
 
 .itin-activity-desc {
-  flex-basis: 100%;
+  margin: 0.15rem 0 0;
   font-size: 0.82rem;
   color: #64748b;
   overflow-wrap: anywhere;
@@ -394,22 +494,6 @@
   font-size: 0.8rem;
   font-weight: 500;
   color: #475569;
-}
-
-.itin-add-day button {
-  width: calc(100% - 4.9rem);
-  margin-left: 4.9rem;
-  padding: 0.75rem;
-  border: 1px dashed #cbd5e1;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--muted-text);
-  font-weight: 500;
-}
-
-.itin-add-day button:hover {
-  border-color: var(--accent-color);
-  color: var(--accent-color);
 }
 
 .itin-empty {
@@ -526,13 +610,6 @@
 }
 
 /* ── Weather ──────────────────────────────────────────────────── */
-.itin-wx {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.35rem;
-}
 
 .itin-wx-temp {
   display: inline-flex;
@@ -658,23 +735,17 @@
   color: inherit;
 }
 
-@media (max-width: 640px) {
-  .itin-day {
-    grid-template-columns: 2.75rem minmax(0, 1fr);
-    gap: 0.6rem;
+@media (max-width: 720px) {
+  .itin-detail {
+    grid-template-columns: 1fr;
+    padding: 1rem;
   }
+}
 
-  .itin-add-day button {
-    width: calc(100% - 3.35rem);
-    margin-left: 3.35rem;
-  }
+@media (max-width: 640px) {
 
   .itin-packing {
     margin-left: 0;
-  }
-
-  .itin-wx {
-    justify-content: flex-start;
   }
 
   .itin-forecast {

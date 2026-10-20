@@ -85,23 +85,33 @@ const AQI_LABELS: Record<string, string> = {
   hazardous: 'Hazardous',
 };
 
-export function DayForecastSummary({ row }: { row: WeatherRow | undefined }) {
+export function DayForecastTemps({ row }: { row: WeatherRow | undefined }) {
   if (!hasForecast(row)) {
-    return row ? <span className="itin-wx-unavailable">No forecast yet</span> : null;
+    return <span className="itin-wx-unavailable">{row ? 'No forecast yet' : 'No forecast'}</span>;
   }
   const temps = getHeadlineTemps(row);
   return (
-    <div className="itin-wx">
-      <span className="itin-wx-temp" title={row.summary}>
-        <span aria-hidden="true">{weatherCodeEmoji(row.weatherCode)}</span>
-        {temps && (
-          <>
-            <span className="itin-wx-high">{roundTemp(temps.high)}</span>
-            <span className="itin-wx-low">/ {roundTemp(temps.low)}</span>
-          </>
-        )}
-      </span>
-      {getWeatherFlags(row).map(flag => (
+    <span className="itin-wx-temp" title={row.summary}>
+      <span aria-hidden="true">{weatherCodeEmoji(row.weatherCode)}</span>
+      {temps && (
+        <>
+          <span className="itin-wx-high">{roundTemp(temps.high)}</span>
+          <span className="itin-wx-low">/ {roundTemp(temps.low)}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+// Colored flags for weather worth planning around. `limit` keeps the most
+// important ones when space is tight (storms come first).
+export function DayForecastFlags({ row, limit }: { row: WeatherRow | undefined; limit?: number }) {
+  if (!hasForecast(row)) return null;
+  const flags = getWeatherFlags(row).slice(0, limit);
+  if (flags.length === 0) return null;
+  return (
+    <div className="itin-flags">
+      {flags.map(flag => (
         <span key={flag.label} className={`itin-flag ${flag.tone}`}>{flag.label}</span>
       ))}
     </div>
