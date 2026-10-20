@@ -2364,6 +2364,7 @@ function App() {
         setActiveTab={setActiveTab}
         currentTrip={currentTrip}
         addCategory={addCategory}
+        notPackedCount={notPackedItems.length}
       />
 
       <main className="content">
