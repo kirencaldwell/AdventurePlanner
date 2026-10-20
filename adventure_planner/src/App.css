@@ -1672,15 +1672,6 @@ select:focus {
   }
 }
 
-<<<<<<< HEAD
-=======
-@media (max-width: 420px) {
-  .forecast-card {
-    min-height: 84px;
-  }
-}
-
->>>>>>> origin/main
 /* Copy List Feature Styles */
 
 .copy-list-select {
