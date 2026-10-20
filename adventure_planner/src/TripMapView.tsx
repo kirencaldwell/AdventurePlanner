@@ -163,7 +163,7 @@ export const TripMapView = ({
             <span>📍 {getFirstDayLocation(selectedWaypoint.trips[0])}</span>
             <button type="button" onClick={() => setSelectedWaypointKey(null)} aria-label="Close trip details">×</button>
           </div>
-          <div className="trip-list">
+          <div className="dash-grid">
             {selectedWaypoint.trips.map(renderTripCard)}
           </div>
         </div>

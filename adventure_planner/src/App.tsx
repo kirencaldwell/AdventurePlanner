@@ -2166,7 +2166,7 @@ function App() {
             setView('trip-detail');
           }}
           onNewTrip={() => createNewTrip('New Trip')}
-          onRefreshAllWeather={refreshAllWeather}
+          onRefreshAllWeather={() => refreshAllWeather(true)}
           forecastData={forecastData}
           onOpenWeatherDetail={openWeatherDetail}
           onCopyTripLink={handleCopyTripLink}
