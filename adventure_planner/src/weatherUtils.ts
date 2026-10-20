@@ -64,6 +64,13 @@ export const isStormyWeatherCode = (code: number | undefined) => {
   return [65, 67, 75, 82, 86, 95, 96, 99].includes(code);
 };
 
+// True when a row holds a real forecast rather than a placeholder for an
+// unresolved location, an out-of-range date, or a failed lookup.
+export const hasForecast = (row: WeatherRow | undefined): row is WeatherRow =>
+  !!row && !row.error && row.weatherCode != null &&
+  row.summary !== 'Forecast unavailable for this date' &&
+  row.summary !== 'Weather service unavailable';
+
 export const formatTemp = (value: number) => `${((value * 9) / 5 + 32).toFixed(1)}°F`;
 export const formatWind = (value: number | undefined) => value == null ? '-' : `${(value * 0.621371).toFixed(1)} mph`;
 export const formatVisibility = (value: number | undefined) => value == null ? '-' : `${(value * 0.621371).toFixed(1)} mi`;

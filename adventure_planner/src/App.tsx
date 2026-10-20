@@ -1908,10 +1908,13 @@ function App() {
     setActiveTab('trip');
   };
 
-  const refreshAllWeather = async (force = false) => {
+  // Pass onlyTripId to refresh a single trip's day-by-day weather without
+  // touching other trips or the dashboard forecasts.
+  const refreshAllWeather = async (force = false, onlyTripId?: string) => {
     const today = getTodayString();
     const updatedTrips = await Promise.all(trips.map(async (trip) => {
       if (trip.isTemplate) return trip;
+      if (onlyTripId && trip.id !== onlyTripId) return trip;
       // Check if cache is valid (less than an hour old AND same data)
       const isCacheValid = trip.lastWeatherUpdate && 
                            (Date.now() - trip.lastWeatherUpdate < 3600000) &&
@@ -1989,6 +1992,8 @@ function App() {
       };
     }));
 
+    if (onlyTripId) return updatedTrips;
+
     // Also fetch 7-day dashboard forecasts for all trips
     const newForecasts: Record<string, StartingDayForecast[]> = {};
     for (const trip of updatedTrips) {
@@ -2009,7 +2014,12 @@ function App() {
   const fetchWeather = async () => {
     if (!currentTrip) return;
     // eslint-disable-next-line react-hooks/purity -- runs in an event handler, not during render
-    const isCacheValid = currentTrip.lastWeatherUpdate && (Date.now() - currentTrip.lastWeatherUpdate < 3600000);
+    const isCacheValid = currentTrip.lastWeatherUpdate && (Date.now() - currentTrip.lastWeatherUpdate < 3600000)
+      && currentTrip.startDate
+      && Object.values(currentTrip.weatherData || {}).every((row, i) =>
+        row.date === getDayDate(currentTrip.startDate || '', i) &&
+        row.location === (currentTrip.days?.[i]?.location || '')
+      );
 
     if (isCacheValid && currentTrip.weatherData && Object.keys(currentTrip.weatherData).length > 0) {
       setWeatherRows(Object.values(currentTrip.weatherData).sort((a, b) => a.dayIndex - b.dayIndex));
@@ -2028,7 +2038,7 @@ function App() {
       return;
     }
 
-    const refreshedTrips = await refreshAllWeather(true);
+    const refreshedTrips = await refreshAllWeather(true, currentTrip.id);
     const refreshedTrip = refreshedTrips.find(trip => trip.id === currentTrip.id);
     if (refreshedTrip?.weatherData) {
       const rows = Object.values(refreshedTrip.weatherData).sort((a, b) => a.dayIndex - b.dayIndex);
@@ -2042,11 +2052,14 @@ function App() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'weather') return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetches weather when the weather tab opens
+    // On the Trip tab, wait until the day being edited is closed so typing a
+    // location doesn't fetch weather on every keystroke.
+    const showsWeather = activeTab === 'weather' || (activeTab === 'trip' && !currentTrip?.isTemplate && !editingDayId);
+    if (!showsWeather) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetches weather when a tab that shows it opens
     fetchWeather();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, currentTrip?.startDate, currentTrip?.days?.length, currentTrip?.days?.map(day => day.location).join('|'), currentTrip?.lastWeatherUpdate]);
+  }, [activeTab, editingDayId, currentTrip?.isTemplate, currentTrip?.startDate, currentTrip?.days?.length, currentTrip?.days?.map(day => day.location).join('|'), currentTrip?.lastWeatherUpdate]);
 
   useEffect(() => {
     if (!user || isInitialLoad || view !== 'dashboard' || trips.length === 0) return;
@@ -2398,6 +2411,7 @@ function App() {
         ) : activeTab === 'trip' ? (
           <TripTab
             currentTrip={currentTrip}
+            weatherRows={weatherRows}
             updateStartDate={updateStartDate}
             gearCloset={gearCloset}
             removeTripTag={removeTripTag}
