@@ -1,8 +1,21 @@
 import { useState } from 'react';
 import type { Trip } from './types';
 import type { StartingDayForecast } from './weatherUtils';
-import { parseDiscussionString, AUTO_DIFFICULTY_LEVELS, calculateTripStats, getTripDateRange, getTripActivitySummary, weatherCodeEmoji, likelihoodClass, getAqiCategory, formatForecastStartLabel, createDefaultTripDashboardFilters } from './tripUtils';
+import { parseDiscussionString, AUTO_DIFFICULTY_LEVELS, calculateTripStats, createDefaultTripDashboardFilters } from './tripUtils';
 import type { TripDashboardFilters } from './tripUtils';
+import { TripCard } from './TripCard';
+import { TripMapView } from './TripMapView';
+
+type DashboardViewMode = 'list' | 'map';
+const DASHBOARD_VIEW_MODE_KEY = 'adventure-planner-dashboard-view-mode';
+
+const getStoredDashboardViewMode = (): DashboardViewMode => {
+  try {
+    return window.sessionStorage.getItem(DASHBOARD_VIEW_MODE_KEY) === 'map' ? 'map' : 'list';
+  } catch {
+    return 'list';
+  }
+};
 
 export const TripDashboard = ({
   trips,
@@ -33,6 +46,11 @@ export const TripDashboard = ({
     Array.isArray(value) ? value.length > 0 : value.trim() !== ''
   );
   const [filtersOpen, setFiltersOpen] = useState(hasActiveFilters);
+  const [viewMode, setViewMode] = useState<DashboardViewMode>(getStoredDashboardViewMode);
+  const changeViewMode = (mode: DashboardViewMode) => {
+    setViewMode(mode);
+    try { window.sessionStorage.setItem(DASHBOARD_VIEW_MODE_KEY, mode); } catch { /* storage unavailable */ }
+  };
   const activityTypes = Array.from(new Set([
     'hiking',
     'ski-touring',
@@ -65,6 +83,17 @@ export const TripDashboard = ({
       && matchesPresence(filters.strava, hasStravaPost)
       && matchesPresence(filters.debriefComment, hasDebriefComment);
   });
+
+  const renderTripCard = (trip: Trip) => (
+    <TripCard
+      key={trip.id}
+      trip={trip}
+      forecasts={forecastData[trip.id] || []}
+      onViewTrip={onViewTrip}
+      onOpenWeatherDetail={onOpenWeatherDetail}
+      onCopyTripLink={onCopyTripLink}
+    />
+  );
 
   const updateFilter = (name: keyof typeof filters, value: string) => {
     onFiltersChange(current => ({ ...current, [name]: value }));
@@ -197,117 +226,24 @@ export const TripDashboard = ({
         </label>
       </div>}
     </section>
+    <div className="dashboard-view-toggle" role="group" aria-label="Show trips as">
+      <button type="button" aria-pressed={viewMode === 'list'} onClick={() => changeViewMode('list')}>☰ List</button>
+      <button type="button" aria-pressed={viewMode === 'map'} onClick={() => changeViewMode('map')}>🗺️ Map</button>
+    </div>
+    {viewMode === 'map' ? (
+      <TripMapView
+        trips={filteredTrips}
+        renderTripCard={renderTripCard}
+      />
+    ) : (
     <div className="trip-list">
       {filteredTrips.length === 0 ? (
         <div className="trip-filter-empty" role="status">
           No trips match these filters.
         </div>
-      ) : filteredTrips.map((trip) => {
-        const stats = calculateTripStats(trip);
-        const weatherStatus = trip.weatherStatus || 'Pending';
-        let statusColor = '#9ca3af';
-        if (weatherStatus === 'Good') statusColor = '#22c55e';
-        else if (weatherStatus === 'Mild') statusColor = '#f59e0b';
-        else if (weatherStatus === 'Bad') statusColor = '#ef4444';
-        else if (weatherStatus === 'Too Far in the Future') statusColor = '#6366f1';
-        const forecasts = forecastData[trip.id] || [];
-        const tripDayCount = trip.days?.length ?? 0;
-        return (
-          <div key={trip.id} className="trip-card" onClick={() => onViewTrip(trip.id)}>
-            <div className="trip-card-main">
-              <div className="trip-card-overview">
-                <div className="trip-card-header">
-                  <h2>{trip.name}</h2>
-                  <button
-                    type="button"
-                    className="trip-card-copy-btn"
-                    title="Copy direct link to this trip"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCopyTripLink(trip.id);
-                    }}
-                  >
-                    🔗 Copy Link
-                  </button>
-                </div>
-                <div className="trip-card-badges">
-                          <span className="weather-status-badge" style={{ background: statusColor }}>
-                            {weatherStatus}
-                          </span>
-                          {trip.weatherData && Object.values(trip.weatherData).length > 0 && (() => {
-                            const aqiValues = Object.values(trip.weatherData).map(row => row.aqi).filter((aqi): aqi is number => typeof aqi === 'number');
-                            if (aqiValues.length === 0) return null;
-                            const maxAqi = Math.max(...aqiValues);
-                            const aqiClass = `aqi-${getAqiCategory(maxAqi)}`;
-                            return (<span className={`trip-aqi-badge ${aqiClass}`}>AQI {maxAqi}</span>);
-                          })()}
-                </div>
-                <div className="trip-card-meta">
-                  <span>📅 {getTripDateRange(trip.startDate, stats.dayCount)}</span>
-                  <span>🏔️ {getTripActivitySummary(trip)}</span>
-                </div>
-                <div className="trip-card-stats">
-                  <span>{stats.mileageRange}</span>
-                  <span>{stats.elevationRange}</span>
-                </div>
-                {(trip.tags || []).length > 0 && (
-                  <div className="trip-card-tags" aria-label="Trip tags">
-                    {trip.tags?.map(tag => <span className="trip-card-tag" key={tag}>{tag}</span>)}
-                  </div>
-                )}
-              </div>
-              <div className="forecast-section" onClick={(e) => e.stopPropagation()}>
-                <div className="forecast-section-label">Weather window for the next 7 days</div>
-                {forecasts.length > 0 ? (
-                  <div className="forecast-grid">
-                    {forecasts.map((fd) => {
-                      const goodDays = fd.totalDays - fd.stormyCount;
-                      const aqiValues = fd.days.map(d => d.aqi).filter((aqi): aqi is number => typeof aqi === 'number');
-                      const maxAqi = aqiValues.length > 0 ? Math.max(...aqiValues) : null;
-                      const dayDetails = fd.days.map((d, idx) => `Day ${idx + 1}: ${d.summary}${d.aqi ? ' • AQI ' + d.aqi : ''}`).join('\n');
-                      return (
-                        <div
-                          key={fd.startDate}
-                          className={`forecast-card likelihood-${likelihoodClass(fd.likelihood)}`}
-                          role="button"
-                          tabIndex={0}
-                          title={`Starting ${fd.startDate}: ${goodDays}/${tripDayCount} good days\n${dayDetails}\nClick for full details`}
-                          aria-label={`Starting ${formatForecastStartLabel(fd.startDate)}: ${fd.likelihood}% chance of good weather, ${goodDays} of ${tripDayCount} good days`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenWeatherDetail(trip, fd.startDate);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              onOpenWeatherDetail(trip, fd.startDate);
-                            }
-                          }}
-                        >
-                          <div className="forecast-date">{formatForecastStartLabel(fd.startDate)}</div>
-                          <div className="forecast-days-icons" aria-hidden="true">
-                            {fd.days.map((d, idx) => (
-                              <span key={idx} className="forecast-day-icon">{weatherCodeEmoji(d.weatherCode)}</span>
-                            ))}
-                          </div>
-                          <div className="forecast-likelihood-pct">{fd.likelihood}%</div>
-                          {maxAqi !== null && maxAqi > 50 && (
-                            <span className={`forecast-aqi aqi-${getAqiCategory(maxAqi)}`}>AQI {maxAqi}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="forecast-empty-state">Loading weather windows…</div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })}
+      ) : filteredTrips.map(renderTripCard)}
     </div>
+    )}
     </>)}
   </div>
   );

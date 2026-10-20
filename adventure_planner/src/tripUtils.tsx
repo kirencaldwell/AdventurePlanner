@@ -577,3 +577,11 @@ export const normalizeTripCategories = (trip: Trip): Trip => {
     categories: finalCategories,
   };
 };
+
+export const getWeatherStatusColor = (weatherStatus: string) => {
+  if (weatherStatus === 'Good') return '#22c55e';
+  if (weatherStatus === 'Mild') return '#f59e0b';
+  if (weatherStatus === 'Bad') return '#ef4444';
+  if (weatherStatus === 'Too Far in the Future') return '#6366f1';
+  return '#9ca3af';
+};
