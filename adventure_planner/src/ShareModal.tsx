@@ -32,7 +32,7 @@ export function ShareModal({ tripId, sharedWith, onClose, isOwner, currentUserEm
     }
 
     try {
-      if (sharedWith.includes(targetEmail)) {
+      if (sharedWith.some(e => e.trim().toLowerCase() === targetEmail)) {
         throw new Error('This trip is already shared with this user.');
       }
 

@@ -330,7 +330,7 @@ function App() {
         const { data, error } = await supabase
           .from('trips')
           .select('*')
-          .or(`user_id.eq.${user.id},shared_with.cs.{"${user.email}"}`)
+          .or(`user_id.eq.${user.id},shared_with.cs.{"${(user.email || '').trim().toLowerCase()}"}`)
           .order('last_modified', { ascending: false });
 
         if (error) {
@@ -491,6 +491,8 @@ function App() {
         const { error } = await supabase.from('trips').upsert(upsertData);
         if (error) {
           console.error('Failed to save trips to Supabase:', error);
+          setToastMessage(`Couldn't save your changes: ${error.message}`);
+          setTimeout(() => setToastMessage(null), 6000);
         } else {
           console.log('Trips saved successfully');
         }
@@ -2515,7 +2517,7 @@ function App() {
             } else {
               updateCurrentTrip(trip => ({
                 ...trip,
-                sharedWith: newSharedWith,
+                sharedWith: newSharedWith.map(e => e.trim().toLowerCase()),
                 lastModified: Date.now()
               }));
             }
