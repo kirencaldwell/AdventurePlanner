@@ -85,6 +85,7 @@ export interface Trip {
   tags?: string[];
   isTemplate?: boolean;
   completed?: boolean;
+  isPublic?: boolean; // anyone with the link can edit
   startDate?: string;
   days?: TripDay[];
   caltopoUrl?: string;

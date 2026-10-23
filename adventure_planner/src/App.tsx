@@ -120,6 +120,10 @@ function App() {
   const [accessDeniedTrip, setAccessDeniedTrip] = useState<{ id: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedTripLink, setCopiedTripLink] = useState(false);
+  // Signed-out visitor editing a trip that has link sharing on.
+  const [guestTripStatus, setGuestTripStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [showGuestSignIn, setShowGuestSignIn] = useState(false);
+  const isGuest = !user && guestTripStatus === 'ready';
 
   const handleCopyTripLink = (tripIdToCopy?: string) => {
     const id = tripIdToCopy || currentTripId;
@@ -349,6 +353,7 @@ function App() {
               tags: row.tags || [],
               isTemplate: row.is_template === true,
               completed: row.completed === true,
+              isPublic: row.is_public === true,
               startDate: row.start_date || '',
               days: row.days || [],
               caltopoUrl: row.caltopo_url || '',
@@ -371,11 +376,27 @@ function App() {
           // If not in the bulk list, attempt direct fetch for this trip
           if (!foundTarget) {
             console.log('Target trip not in bulk list, querying single trip:', targetTripId);
-            const { data: directData } = await supabase
+            const fetchTargetTrip = async () => (await supabase
               .from('trips')
               .select('*')
               .eq('id', targetTripId)
-              .maybeSingle();
+              .maybeSingle()).data;
+            let directData = await fetchTargetTrip();
+            const alreadyMember = Boolean(directData && (
+              directData.user_id === user.id ||
+              (Array.isArray(directData.shared_with) && directData.shared_with.some((e: string) => e.trim().toLowerCase() === user.email?.trim().toLowerCase()))
+            ));
+
+            // Opening the link of a trip with link sharing on adds you to it.
+            if (!alreadyMember) {
+              const { data: joined, error: joinError } = await supabase.rpc('join_public_trip', { p_trip_id: targetTripId });
+              if (joinError) {
+                console.warn('join_public_trip failed:', joinError);
+              } else if (joined) {
+                console.log('Joined trip through its public link:', targetTripId);
+                directData = await fetchTargetTrip();
+              }
+            }
 
             if (directData) {
               const candidate = normalizeTripCategories({
@@ -386,6 +407,7 @@ function App() {
                 tags: directData.tags || [],
                 isTemplate: directData.is_template === true,
                 completed: directData.completed === true,
+                isPublic: directData.is_public === true,
                 startDate: directData.start_date || '',
                 days: directData.days || [],
                 caltopoUrl: directData.caltopo_url || '',
@@ -463,6 +485,100 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reload trips only when the signed-in user changes
   }, [user]);
 
+  // Signed-out visitors can open and edit a trip that has link sharing on.
+  useEffect(() => {
+    if (user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- leaves guest mode once someone signs in
+      setGuestTripStatus('idle');
+      setShowGuestSignIn(false);
+      return;
+    }
+    if (isInitialLoad) return;
+    const linkTripId = initialTargetTripId || getTripIdFromUrl();
+    if (!linkTripId) {
+      setGuestTripStatus('unavailable');
+      return;
+    }
+
+    let cancelled = false;
+    setGuestTripStatus('loading');
+    void (async () => {
+      const { data, error } = await supabase.rpc('get_public_trip', { p_trip_id: linkTripId });
+      if (cancelled) return;
+      if (error || !data) {
+        if (error) console.warn('get_public_trip failed:', error);
+        setGuestTripStatus('unavailable');
+        return;
+      }
+      const publicTrip = normalizeTripCategories({
+        id: data.id,
+        name: data.name,
+        people: data.people || [],
+        categories: data.categories || [],
+        tags: data.tags || [],
+        completed: data.completed === true,
+        isPublic: true,
+        startDate: data.start_date || '',
+        days: data.days || [],
+        caltopoUrl: data.caltopo_url || '',
+        lastModified: Number(data.last_modified || Date.now())
+      });
+      setTrips([publicTrip]);
+      setCurrentTripId(publicTrip.id);
+      setView('trip-detail');
+      setGuestTripStatus('ready');
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when sign-in state settles
+  }, [user, isInitialLoad]);
+
+  // Save a signed-out visitor's edits through the link-sharing function (debounced)
+  const lastGuestSaveRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isGuest || trips.length !== 1) {
+      lastGuestSaveRef.current = null;
+      return;
+    }
+    const trip = trips[0];
+    const payload = {
+      name: trip.name,
+      people: trip.people,
+      categories: trip.categories,
+      tags: trip.tags || [],
+      completed: trip.completed || false,
+      start_date: trip.startDate || '',
+      days: trip.days || [],
+      caltopo_url: trip.caltopoUrl || '',
+      last_modified: trip.lastModified
+    };
+    const serialized = JSON.stringify(payload);
+    if (lastGuestSaveRef.current === null) {
+      // Nothing to save for the trip as it was just loaded.
+      lastGuestSaveRef.current = serialized;
+      return;
+    }
+    if (lastGuestSaveRef.current === serialized) return;
+
+    const timeoutId = setTimeout(() => {
+      lastGuestSaveRef.current = serialized;
+      tripSaveQueueRef.current = tripSaveQueueRef.current.then(async () => {
+        const { data: saved, error } = await supabase.rpc('save_public_trip', { p_trip_id: trip.id, p_trip: payload });
+        if (error || !saved) {
+          console.error('Failed to save public trip:', error);
+          setToastMessage(error
+            ? `Couldn't save your changes: ${error.message}`
+            : "Couldn't save your changes. The owner may have turned off link sharing.");
+          setTimeout(() => setToastMessage(null), 6000);
+        }
+      }).catch(error => {
+        console.error('Failed to save public trip:', error);
+      });
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [trips, isGuest]);
+
   // Save trips to Supabase (debounced)
   useEffect(() => {
     if (!user || isInitialLoad || trips.length === 0) return;
@@ -476,6 +592,7 @@ function App() {
         tags: t.tags || [],
         is_template: t.isTemplate || false,
         completed: t.completed || false,
+        is_public: t.isPublic || false,
         start_date: t.startDate || '',
         days: t.days || [],
         caltopo_url: t.caltopoUrl || '',
@@ -2105,7 +2222,16 @@ function App() {
     );
   }
 
-  if (!user) {
+  if (!user && (guestTripStatus === 'idle' || guestTripStatus === 'loading')) {
+    return (
+      <div className="loading-screen">
+        <div className="spinner"></div>
+        <p>Loading Adventure...</p>
+      </div>
+    );
+  }
+
+  if (!user && (!isGuest || showGuestSignIn)) {
     return <AuthScreen />;
   }
 
@@ -2120,7 +2246,13 @@ function App() {
     setView('templates');
   };
 
-  const globalNav = (
+  const globalNav = !user ? (
+    <nav className="guest-nav" aria-label="Shared trip">
+      <span className="guest-nav-brand">🏔️ AdventurePlanner</span>
+      <span className="guest-nav-note">Anyone with this link can edit this trip.</span>
+      <button type="button" className="guest-nav-signin" onClick={() => setShowGuestSignIn(true)}>Sign in</button>
+    </nav>
+  ) : (
     <GlobalNav
       view={view}
       isAccessDenied={Boolean(accessDeniedTrip)}
@@ -2132,7 +2264,7 @@ function App() {
     />
   );
 
-  if (view === 'templates') {
+  if (user && view === 'templates') {
     return (
       <>
         {globalNav}
@@ -2148,7 +2280,7 @@ function App() {
     );
   }
 
-  if (view === 'gear-closet') {
+  if (user && view === 'gear-closet') {
     return (
       <>
         {globalNav}
@@ -2168,7 +2300,7 @@ function App() {
     );
   }
 
-  if (view === 'dashboard') {
+  if (user && view === 'dashboard') {
     return (
       <>
         {globalNav}
@@ -2219,7 +2351,7 @@ function App() {
     );
   }
 
-  if (accessDeniedTrip) {
+  if (user && accessDeniedTrip) {
     return (
       <div className="access-denied-page">
         {globalNav}
@@ -2380,6 +2512,7 @@ function App() {
         createNewTrip={createNewTrip}
         copyTrip={copyTrip}
         user={user}
+        isGuest={isGuest}
         saveCurrentTripAsTemplate={saveCurrentTripAsTemplate}
         handlePrintAllTabs={handlePrintAllTabs}
         resetTrip={resetTrip}
@@ -2404,6 +2537,7 @@ function App() {
         currentTrip={currentTrip}
         addCategory={addCategory}
         notPackedCount={notPackedItems.length}
+        showDebrief={!isGuest}
       />
 
       <main className="content">
@@ -2411,7 +2545,7 @@ function App() {
           <NotPackedTab
             notPackedItems={notPackedItems}
           />
-        ) : activeTab === 'debrief' ? (
+        ) : activeTab === 'debrief' && user ? (
           <DebriefTab
             addStrava={addStrava}
             addDiscussion={addDiscussion}
@@ -2470,7 +2604,7 @@ function App() {
             setNewItemDrafts={setNewItemDrafts}
             addItem={addItem}
             currentTrip={currentTrip}
-            currentUserId={user.id}
+            currentUserId={user?.id}
             gearCloset={gearCloset}
             toggleGroupGear={toggleGroupGear}
             setItemAssignment={setItemAssignment}
@@ -2500,10 +2634,12 @@ function App() {
         notPackedItems={notPackedItems}
       />
 
-      {isShareModalOpen && currentTrip && (
+      {isShareModalOpen && currentTrip && user && (
         <ShareModal
           tripId={currentTrip.id}
           sharedWith={currentTrip.sharedWith || []}
+          isPublic={currentTrip.isPublic === true}
+          onUpdateIsPublic={(isPublic) => updateCurrentTrip(trip => ({ ...trip, isPublic, lastModified: Date.now() }))}
           onClose={() => setIsShareModalOpen(false)}
           isOwner={user.id === currentTrip.userId}
           currentUserEmail={user.email || ''}

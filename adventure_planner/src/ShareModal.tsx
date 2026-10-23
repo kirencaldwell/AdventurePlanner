@@ -8,9 +8,11 @@ interface ShareModalProps {
   isOwner: boolean;
   currentUserEmail: string;
   onUpdateSharedWith: (newSharedWith: string[]) => void;
+  isPublic: boolean;
+  onUpdateIsPublic: (isPublic: boolean) => void;
 }
 
-export function ShareModal({ tripId, sharedWith, onClose, isOwner, currentUserEmail, onUpdateSharedWith }: ShareModalProps) {
+export function ShareModal({ tripId, sharedWith, onClose, isOwner, currentUserEmail, onUpdateSharedWith, isPublic, onUpdateIsPublic }: ShareModalProps) {
   const [newEmail, setNewEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,9 +75,27 @@ export function ShareModal({ tripId, sharedWith, onClose, isOwner, currentUserEm
 
         <div className="invite-link-section">
           <h3>Trip Link</h3>
-          <p>
-            Share this direct link to this trip. Only the creator and helpers added to the list below can view it.
-          </p>
+          <label className={`link-sharing-toggle ${isOwner ? '' : 'is-disabled'}`}>
+            <input
+              type="checkbox"
+              checked={isPublic}
+              disabled={!isOwner}
+              onChange={(e) => onUpdateIsPublic(e.target.checked)}
+            />
+            <span>
+              <strong>Anyone with the link can edit</strong>
+              <small>No sign-in needed.{!isOwner && ' Only the trip creator can change this.'}</small>
+            </span>
+          </label>
+          {isPublic ? (
+            <p className="link-sharing-warning" role="note">
+              ⚠️ Anyone who has this link can see and change this trip, even without an account. Only share it with people you trust, and turn this off to stop link access. People who opened it while signed in stay on the access list until you remove them.
+            </p>
+          ) : (
+            <p>
+              Only the creator and helpers added to the list below can open this link.
+            </p>
+          )}
           <div className="trip-link-box">
             <input
               type="text"
