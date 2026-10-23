@@ -10,6 +10,7 @@ interface TripTabsNavProps {
   currentTrip: Trip;
   addCategory: () => Promise<void>;
   notPackedCount: number;
+  showDebrief?: boolean;
 }
 
 interface SectionTab {
@@ -24,6 +25,7 @@ export function TripTabsNav({
   currentTrip,
   addCategory,
   notPackedCount,
+  showDebrief = true,
 }: TripTabsNavProps) {
   const isTemplate = currentTrip.isTemplate === true;
   const categories = currentTrip.categories;
@@ -83,7 +85,7 @@ export function TripTabsNav({
             <span className="trip-nav-badge">{notPackedCount} left</span>
           )}
         </button>
-        {!isTemplate && sectionButton({ id: 'debrief', label: 'Debrief', icon: <NotebookIcon /> })}
+        {!isTemplate && showDebrief && sectionButton({ id: 'debrief', label: 'Debrief', icon: <NotebookIcon /> })}
       </div>
 
       {packingActive && (

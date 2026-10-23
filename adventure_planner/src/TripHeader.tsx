@@ -37,7 +37,8 @@ interface TripHeaderProps {
   closeTripMenu: () => void;
   createNewTrip: (name: string, userId?: string | undefined) => void;
   copyTrip: () => void;
-  user: User;
+  user: User | null;
+  isGuest: boolean;
   saveCurrentTripAsTemplate: () => Promise<void>;
   handlePrintAllTabs: () => void;
   resetTrip: () => Promise<void>;
@@ -85,6 +86,7 @@ export function TripHeader({
   createNewTrip,
   copyTrip,
   user,
+  isGuest,
   saveCurrentTripAsTemplate,
   handlePrintAllTabs,
   resetTrip,
@@ -127,7 +129,7 @@ export function TripHeader({
   const people = currentTrip.people;
   const visiblePeople = people.slice(0, MAX_AVATARS);
   const hiddenPeopleCount = people.length - visiblePeople.length;
-  const myPersonId = people.find(person => person.userId === user.id)?.id || '';
+  const myPersonId = user ? people.find(person => person.userId === user.id)?.id || '' : '';
   const peopleLabel = people.length > 0
     ? `Packers: ${people.map(person => person.name).join(', ')}. Manage packers`
     : 'Add packers';
@@ -156,7 +158,9 @@ export function TripHeader({
       </svg>
       <div className="trip-hero-inner">
         <div className="trip-breadcrumb">
-          {isTemplate ? (
+          {isGuest ? (
+            <span className="trip-breadcrumb-current">Shared trip</span>
+          ) : isTemplate ? (
             <>
               <button type="button" className="trip-breadcrumb-link" onClick={openTemplates}>Templates</button>
               <span aria-hidden="true">/</span>
@@ -261,7 +265,7 @@ export function TripHeader({
                 <button type="button" className="trip-popover-add" onClick={promptAddPerson}>
                   <PlusIcon size={14} />Add packer
                 </button>
-                {people.length > 0 && (
+                {user && people.length > 0 && (
                   <label className="trip-popover-field">
                     <span>Which one is you?</span>
                     <select
@@ -288,9 +292,11 @@ export function TripHeader({
               <button type="button" className="trip-primary-btn" onClick={openTemplates}>Done</button>
             ) : (
               <>
-                <button type="button" className="trip-primary-btn" onClick={() => setIsShareModalOpen(true)}>
-                  <ShareIcon />Share
-                </button>
+                {!isGuest && (
+                  <button type="button" className="trip-primary-btn" onClick={() => setIsShareModalOpen(true)}>
+                    <ShareIcon />Share
+                  </button>
+                )}
                 <button
                   type="button"
                   className={`trip-icon-btn ${copiedTripLink ? 'is-done' : ''}`}
@@ -300,7 +306,7 @@ export function TripHeader({
                 >
                   {copiedTripLink ? <CheckIcon size={17} /> : <LinkIcon size={17} />}
                 </button>
-                <details className="trip-hero-more" ref={tripMenuRef}>
+                {user && <details className="trip-hero-more" ref={tripMenuRef}>
                   <summary className="trip-icon-btn" aria-label="More trip actions" title="More">
                     <MoreIcon size={18} />
                   </summary>
@@ -327,13 +333,13 @@ export function TripHeader({
                       <button onClick={leaveTrip} className="danger">Remove Trip</button>
                     )}
                   </div>
-                </details>
+                </details>}
               </>
             )}
           </div>
         </div>
 
-        {!isTemplate && (
+        {!isTemplate && user && (
           <div className="trip-ask">
             <form className="trip-ask-field" onSubmit={event => {
               event.preventDefault();
